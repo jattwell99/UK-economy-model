@@ -112,6 +112,25 @@ python manage.py ingest_population --path data/gva/populationestimatesbylocalaut
 python manage.py derive_per_head
 ```
 
+## Creating an admin user
+
+The Django admin is at `/admin/` and needs a superuser.
+
+- **Locally / interactively:** `python manage.py createsuperuser`.
+- **On a deployed box (no prompt):** set the credentials as env vars and run the
+  idempotent `seed_admin` command — safe to re-run (it just resets the password):
+
+  ```bash
+  # Railway: set these in the web service Variables, then:
+  railway run python manage.py seed_admin
+  # or Fly:
+  fly ssh console -C "python manage.py seed_admin"
+  ```
+
+  Reads `DJANGO_SUPERUSER_USERNAME` (default `admin`), `DJANGO_SUPERUSER_EMAIL`
+  (optional), `DJANGO_SUPERUSER_PASSWORD` (required). You can also pass
+  `--username/--email/--password` directly.
+
 ## Notes
 
 - **Migrations on boot:** the entrypoint runs `migrate` each start — fine for a
