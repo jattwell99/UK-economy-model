@@ -65,6 +65,22 @@ python manage.py seed_v1 --geography
 python manage.py seed_v1 --crosswalk --lookup-csv path/to/ward_lookup.csv
 ```
 
+### Ingesting observations (Phases 2–3)
+
+```bash
+# Phase 2 — ONS regional GVA (balanced) by LAD (one .xlsx per ITL1 region):
+python manage.py ingest_gva --path data/gva/ --dry-run
+python manage.py ingest_gva --path data/gva/
+
+# Phase 3 — LAD population, then derive GVA per head (GVA total x 1e6 / population):
+python manage.py ingest_population --path data/gva/populationestimatesbylocalauthority.xlsx --vintage 2020-06-mye
+python manage.py derive_per_head
+```
+
+All three are idempotent (upsert on the observation natural key) and report LAD
+codes that don't match the loaded boundary set as expected boundary churn.
+Source workbooks live in a gitignored `data/` — they aren't committed.
+
 ## Design guarantees (and their tests)
 
 Three properties are load-bearing and covered by `core/tests/`:

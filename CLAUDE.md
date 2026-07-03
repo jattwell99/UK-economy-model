@@ -35,8 +35,12 @@ core/
                    PlaceObservation, ActivityClass (Phases 0-2)
   admin.py         Admin with the autocomplete / list_select_related gotchas applied
   aggregation.py   Crosswalk roll-up gated by Indicator.is_additive
-  management/commands/seed_v1.py   Dimensions, SIC tree, geography, crosswalk
-  tests/           The three CLAUDE.md-mandated early tests
+  management/commands/
+    seed_v1.py       Dimensions, SIC tree, geography (LAD Dec-2019 + WPC), crosswalk
+    ingest_gva.py    ONS regional GVA (balanced) by LAD -> PlaceObservation (Phase 2)
+    ingest_population.py  ONS mid-year LAD population estimates (Phase 3)
+    derive_per_head.py    gva-per-head = GVA total x 1e6 / population (Phase 3)
+  tests/           Early guarantees + the GVA and population/per-head verticals
 docs/              Spec + build plan (source of truth)
 ```
 
@@ -52,7 +56,14 @@ docs/              Spec + build plan (source of truth)
 
 Each phase ends in: migration applied + a test + something verifiable in admin.
 
-**Status:** Phases 0-2 schema, admin, seed scaffold and early tests are in place.
+**Status:** Phases 0-3 are in place and verified against Postgres:
+- 0-2: schema, admin, seed scaffold, early tests; geography loaded (382 LADs
+  Dec-2019 + 650 WPCs); GVA balanced total ingested (7,980 obs, vintage
+  2019-12-19), trend + crosswalk roll-up proven (the go/no-go gate).
+- 3: ONS LAD population estimates ingested (8,162 obs); `gva-per-head` derived
+  from GVA total / population (7,749 obs) against a "Derived" source with a
+  dual-input vintage. `population` is additive; `gva-per-head` is not.
+
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are
 specified in the spec but deliberately not yet added — they belong to a later
