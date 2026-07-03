@@ -130,12 +130,19 @@ GEO_SOURCES = {
         "code_field": "PCON24CD",
         "name_field": "PCON24NM",
     },
+    # LAD December 2019 set — contemporaneous with the 2019 regional-GVA edition
+    # (published 2019-12-19). Load this boundary vintage so GVA LAD codes match;
+    # the handful that don't are genuine post-2019 reorganisations (Place
+    # versioning is exactly for this). Swap to a current LAD set for later phases.
     "LAD": {
         "tier": PlaceTier.LAD,
-        "valid_from": date(2024, 5, 1),   # set to the boundary set date you load
-        "feature_server": "",             # TODO: paste current LAD boundaries FeatureServer URL
-        "code_field": "LAD24CD",
-        "name_field": "LAD24NM",
+        "valid_from": date(2019, 12, 1),
+        "feature_server": (
+            "https://services1.arcgis.com/ESMARspQHYMw9BZ9/arcgis/rest/services/"
+            "Local_Authority_Districts_December_2019_Boundaries_UK_BFE_2022/FeatureServer"
+        ),
+        "code_field": "LAD19CD",
+        "name_field": "LAD19NM",
     },
 }
 
