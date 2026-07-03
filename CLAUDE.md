@@ -43,7 +43,9 @@ core/
     ingest_gva.py    ONS regional GVA (balanced) by LAD -> PlaceObservation (Phase 2)
     ingest_population.py  ONS mid-year LAD population estimates (Phase 3)
     derive_per_head.py    gva-per-head = GVA total x 1e6 / population (Phase 3)
-  tests/           Early guarantees + the GVA and population/per-head verticals
+    ingest_hpi.py    UK House Price Index (average price) by LAD, monthly (breadth)
+    bootstrap_seed.py     Idempotent self-seed on deploy (bundled seed_data/)
+  tests/           Early guarantees + the GVA, population/per-head and HPI verticals
 docs/              Spec + build plan (source of truth)
 ```
 
@@ -71,6 +73,13 @@ Each phase ends in: migration applied + a test + something verifiable in admin.
   indicator (latest vintage per period) and a provenance label. No rankings.
   `rollup_place_value` and the display query both pick latest-vintage-per-period,
   never summing/plotting across vintages.
+
+Breadth (docs/phase3_breadth_brief.md), one source per session:
+- Housing (Source 1, done): UK House Price Index average price ingested at LAD,
+  MONTH periods (`ingest_hpi`, vintage = HPI edition e.g. 2026-04). The seeded
+  `median-house-price` was renamed to `average-house-price` (UK HPI is a
+  mix-adjusted average, not a median; migration 0002 + seed_v1). Non-additive.
+- GDHI (Source 2) and Nomis labour (Source 3) are specified but NOT yet built.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are

@@ -67,7 +67,7 @@ INDICATORS = [
     ("claimant-count", "Claimant count", "labour-market", "count", ValueType.COUNT, True, SubjectScope.PLACE),
     ("median-weekly-pay", "Median gross weekly pay (residence)", "labour-market", "£", ValueType.RATIO, False, SubjectScope.PLACE),
     ("jobs-density", "Jobs density", "labour-market", "ratio", ValueType.RATIO, False, SubjectScope.PLACE),
-    ("median-house-price", "Median house price", "housing", "£", ValueType.RATIO, False, SubjectScope.PLACE),
+    ("average-house-price", "Average house price (UK HPI)", "housing", "£", ValueType.RATIO, False, SubjectScope.PLACE),
     ("healthy-life-expectancy-birth", "Healthy life expectancy at birth", "health", "years", ValueType.RATIO, False, SubjectScope.PLACE),
     ("life-expectancy-birth", "Life expectancy at birth", "health", "years", ValueType.RATIO, False, SubjectScope.PLACE),
     ("imd-most-deprived-decile-share", "Share of LSOAs in most-deprived decile", "community", "%", ValueType.RATE, False, SubjectScope.PLACE),
