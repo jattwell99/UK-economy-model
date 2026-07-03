@@ -1,0 +1,78 @@
+{% extends "explore/base.html" %}
+
+{% block title %}{{ place.name }} — UK place explorer{% endblock %}
+
+{% block extra_head %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+          integrity="sha512-CQBWl4fJHWbryGE+Pc7UAxWMUMNMWzWxF4SQo9CgkJIN1kx6djDQZjh3Y8SZ1d+6I+1zze6Z7kHXO7q3UyZAWw=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+{% endblock %}
+
+{% block content %}
+  <p class="crumb"><a href="{% url 'explore:place_list' %}">Places</a> / {{ place.name }}</p>
+  <h2>{{ place.name }}</h2>
+  <div class="meta">
+    <dl>
+      <dt>Tier</dt><dd>{{ place.get_tier_display }}</dd>
+      <dt>Nation</dt><dd>{{ place.get_nation_display }}</dd>
+      <dt>GSS code</dt><dd>{{ place.gss_code }}</dd>
+      <dt>Boundary</dt><dd>{{ place.valid_from }}{% if place.valid_to %} – {{ place.valid_to }}{% else %} – current{% endif %}</dd>
+      <dt>Indicators</dt><dd>{{ indicator_count }}</dd>
+    </dl>
+  </div>
+
+  {% if charts %}
+    <div class="grid">
+      {% for chart in charts %}
+        <div class="card">
+          <h3>{{ chart.indicator_name }}</h3>
+          <p class="unit">{{ chart.unit }}</p>
+          <canvas id="chart-{{ forloop.counter0 }}" height="200" aria-label="{{ chart.indicator_name }} trend"></canvas>
+          <p class="prov">
+            {% for p in chart.provenance %}{{ p.source }} · vintage {{ p.vintage }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
+          </p>
+        </div>
+      {% endfor %}
+    </div>
+    {{ charts|json_script:"charts-data" }}
+  {% else %}
+    <p class="empty">No observations for this place yet.</p>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {% if charts %}
+  <script>
+    (function () {
+      const charts = JSON.parse(document.getElementById("charts-data").textContent);
+      charts.forEach(function (c, i) {
+        const el = document.getElementById("chart-" + i);
+        if (!el) return;
+        new Chart(el, {
+          type: "line",
+          data: {
+            labels: c.points.map(function (p) { return p.year; }),
+            datasets: [{
+              data: c.points.map(function (p) { return p.value; }),
+              borderColor: "#374151",
+              backgroundColor: "#374151",
+              borderWidth: 1.5,
+              pointRadius: 2,
+              tension: 0.15,
+              fill: false
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false }, tooltip: { intersect: false, mode: "index" } },
+            scales: {
+              x: { title: { display: true, text: "Year" }, grid: { display: false } },
+              y: { title: { display: true, text: c.unit }, beginAtZero: false }
+            }
+          }
+        });
+      });
+    })();
+  </script>
+  {% endif %}
+{% endblock %}

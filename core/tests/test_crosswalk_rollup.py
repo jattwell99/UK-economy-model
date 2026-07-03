@@ -72,3 +72,43 @@ class CrosswalkRollupTests(TestCase):
             basis=CrosswalkBasis.POPULATION,
         )
         self.assertIsNone(result)
+
+    def test_rollup_uses_latest_vintage_not_sum_across_vintages(self):
+        """A restatement (second vintage) must not double-count in the roll-up."""
+        gva = make_indicator(
+            self.domain, code="gva-balanced-total",
+            is_additive=True, value_type=ValueType.CURRENCY,
+        )
+        # LAD A has two vintages for the same period; only the latest should count.
+        make_observation(gva, self.lad_a, self.source,
+                         value=Decimal("1000"), vintage="2019-12-19")
+        make_observation(gva, self.lad_a, self.source,
+                         value=Decimal("1100"), vintage="2020-12-16")  # restatement
+        make_observation(gva, self.lad_b, self.source,
+                         value=Decimal("400"), vintage="2020-12-16")
+
+        total = rollup_place_value(
+            gva, self.wpc,
+            period_start=date(2021, 1, 1), period_end=date(2021, 12, 31),
+            basis=CrosswalkBasis.POPULATION,
+        )
+        # latest-vintage only: 1100 * 0.6 + 400 * 0.25 = 760
+        # (a vintage-summing bug would give (1000+1100)*0.6 + 400*0.25 = 1360)
+        self.assertEqual(total, Decimal("760"))
+
+    def test_rollup_can_pin_an_explicit_vintage(self):
+        gva = make_indicator(
+            self.domain, code="gva-balanced-total",
+            is_additive=True, value_type=ValueType.CURRENCY,
+        )
+        make_observation(gva, self.lad_a, self.source,
+                         value=Decimal("1000"), vintage="2019-12-19")
+        make_observation(gva, self.lad_a, self.source,
+                         value=Decimal("1100"), vintage="2020-12-16")
+        total = rollup_place_value(
+            gva, self.wpc,
+            period_start=date(2021, 1, 1), period_end=date(2021, 12, 31),
+            basis=CrosswalkBasis.POPULATION, vintage="2019-12-19",
+        )
+        # pinned to the older edition: 1000 * 0.6 = 600 (LAD B has no such vintage)
+        self.assertEqual(total, Decimal("600"))

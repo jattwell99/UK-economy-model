@@ -9,8 +9,6 @@ so this module refuses it rather than returning a plausible-but-meaningless numb
 
 from decimal import Decimal
 
-from django.db.models import Sum
-
 from .models import PlaceCrosswalk, PlaceObservation
 
 
@@ -31,7 +29,9 @@ def rollup_place_value(
     """Apportion additive observations from overlapping places onto ``to_place``.
 
     Sums ``value * weight`` over every PlaceCrosswalk ending at ``to_place`` with
-    the given ``basis``, matching each ``from_place``'s observation for the period.
+    the given ``basis``, taking each ``from_place``'s single latest-vintage
+    observation for the period (never summing across vintages — a restatement is
+    a new row, not extra magnitude). Pin a specific edition with ``vintage``.
 
     Raises NonAdditiveRollupError if ``indicator.is_additive`` is False — a rate
     or per-head figure must never be summed across places.
@@ -63,10 +63,14 @@ def rollup_place_value(
         if vintage is not None:
             obs = obs.filter(vintage=vintage)
 
-        subtotal = obs.aggregate(s=Sum("value"))["s"]
-        if subtotal is None:
+        # One value per from_place: the latest vintage for this period. Never Sum
+        # across vintages — a restatement is a new row, not extra magnitude. (Same
+        # root cause as double-plotting all vintages on the explore surface: pick
+        # the latest vintage per period, or pin one with the `vintage` argument.)
+        value = obs.order_by("-vintage").values_list("value", flat=True).first()
+        if value is None:
             continue
-        contribution = subtotal * xw.weight
+        contribution = value * xw.weight
         total = contribution if total is None else total + contribution
 
     return total if total is None else Decimal(total)

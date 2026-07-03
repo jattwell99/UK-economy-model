@@ -1,0 +1,26 @@
+{% extends "explore/base.html" %}
+
+{% block title %}Places — UK place explorer{% endblock %}
+
+{% block content %}
+  <h2>Places</h2>
+  <p class="meta">Local authority districts with data. {{ places|length }} shown.</p>
+
+  <form class="search" method="get" role="search">
+    <input type="search" name="q" value="{{ query }}"
+           placeholder="Search by name (e.g. Manchester)…" aria-label="Search places by name">
+  </form>
+
+  {% if places %}
+    <ul class="places">
+      {% for place in places %}
+        <li>
+          <a href="{% url 'explore:place_detail' place.gss_code %}">{{ place.name }}</a>
+          <span class="code">{{ place.gss_code }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">No places match “{{ query }}”.</p>
+  {% endif %}
+{% endblock %}

@@ -34,7 +34,10 @@ core/
   models.py        Place, PlaceCrosswalk, IndicatorDomain, Indicator, Source,
                    PlaceObservation, ActivityClass (Phases 0-2)
   admin.py         Admin with the autocomplete / list_select_related gotchas applied
-  aggregation.py   Crosswalk roll-up gated by Indicator.is_additive
+  aggregation.py   Crosswalk roll-up gated by Indicator.is_additive (latest vintage per period)
+  selectors.py     Read-side queries for the explore surface (latest-vintage-per-period series)
+  views.py/urls.py Explore surface: /places/ list + /places/<gss_code>/ detail
+  templates/explore/  Server-rendered list + detail (Chart.js from cdnjs)
   management/commands/
     seed_v1.py       Dimensions, SIC tree, geography (LAD Dec-2019 + WPC), crosswalk
     ingest_gva.py    ONS regional GVA (balanced) by LAD -> PlaceObservation (Phase 2)
@@ -63,6 +66,11 @@ Each phase ends in: migration applied + a test + something verifiable in admin.
 - 3: ONS LAD population estimates ingested (8,162 obs); `gva-per-head` derived
   from GVA total / population (7,749 obs) against a "Derived" source with a
   dual-input vintage. `population` is additive; `gva-per-head` is not.
+- Explore surface (read layer, docs/explore_surface_v1_brief.md): `/places/` list
+  + name search and `/places/<gss_code>/` detail with one trend chart per
+  indicator (latest vintage per period) and a provenance label. No rankings.
+  `rollup_place_value` and the display query both pick latest-vintage-per-period,
+  never summing/plotting across vintages.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are
