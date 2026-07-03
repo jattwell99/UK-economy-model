@@ -34,6 +34,26 @@ ALLOWED_HOSTS = [
     if h.strip()
 ]
 
+# Platform-provided hostnames, so the app is reachable the moment it's deployed
+# without hand-editing ALLOWED_HOSTS for each provider.
+_railway_host = os.environ.get("RAILWAY_PUBLIC_DOMAIN")
+if _railway_host:
+    ALLOWED_HOSTS.append(_railway_host)
+_fly_app = os.environ.get("FLY_APP_NAME")
+if _fly_app:
+    ALLOWED_HOSTS.append(f"{_fly_app}.fly.dev")
+
+# CSRF needs full origins (with scheme). Trust https for every non-local host,
+# plus anything explicitly listed in DJANGO_CSRF_TRUSTED_ORIGINS (comma-separated).
+CSRF_TRUSTED_ORIGINS = [
+    f"https://{h}" for h in ALLOWED_HOSTS if h not in ("localhost", "127.0.0.1")
+]
+CSRF_TRUSTED_ORIGINS += [
+    o.strip()
+    for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if o.strip()
+]
+
 
 # Application definition
 
@@ -49,6 +69,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # WhiteNoise serves static files in production (no CDN / nginx needed).
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -78,6 +100,8 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 
 # Database — PostgreSQL only. See CLAUDE.md for why sqlite is not an option.
+# Local dev uses the POSTGRES_* parts; hosting platforms (Fly, Railway, Render,
+# Heroku) inject a single DATABASE_URL, which takes precedence when present.
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -88,6 +112,12 @@ DATABASES = {
         "PORT": os.environ.get("POSTGRES_PORT", "5432"),
     }
 }
+
+_database_url = os.environ.get("DATABASE_URL")
+if _database_url:
+    import dj_database_url
+
+    DATABASES["default"] = dj_database_url.parse(_database_url, conn_max_age=600)
 
 
 # Password validation
@@ -108,8 +138,31 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files
-
+# Static files — WhiteNoise. In production use the hashed, compressed store; in
+# DEBUG keep Django's default so local dev / tests need no collectstatic manifest.
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+if not DEBUG:
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {
+            "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        },
+    }
+
+    # Behind a TLS-terminating platform proxy (Fly / Railway / Render).
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL_REDIRECT", "1") not in (
+        "0", "false", "no", "",
+    )
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+    # HSTS off by default (enabling it carelessly is hard to undo). Turn on in
+    # production once you're sure the site is HTTPS-only, e.g. 31536000 (1 year).
+    SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_SECURE_HSTS_SECONDS", "0"))
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
+    SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"

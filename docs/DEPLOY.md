@@ -1,0 +1,125 @@
+# Deploying the UK place-centric research engine
+
+The app is a standard Django + PostgreSQL service. It ships a `Dockerfile` that
+builds a self-contained web container (gunicorn + WhiteNoise for static files),
+so it deploys to any Docker host. Two low-friction paths are documented here:
+**Fly.io** and **Railway**. Render or a plain VPS work the same way.
+
+## What the container does
+
+- `Dockerfile` installs deps and runs `collectstatic` at build time.
+- `docker-entrypoint.sh` runs `migrate` on boot, then starts gunicorn on `$PORT`
+  (default 8000).
+- Static files are served by WhiteNoise (no nginx/CDN needed).
+
+## Configuration (environment variables)
+
+| Variable | Required | Notes |
+|----------|----------|-------|
+| `DJANGO_SECRET_KEY` | **yes** | Long random string. `python -c "import secrets;print(secrets.token_urlsafe(50))"` |
+| `DATABASE_URL` | **yes** | `postgres://user:pass@host:5432/db`. Injected automatically by Fly/Railway Postgres. Takes precedence over the `POSTGRES_*` parts. |
+| `DJANGO_DEBUG` | no | Defaults off in the image (`0`). Never set to `1` in production. |
+| `DJANGO_ALLOWED_HOSTS` | no | Comma-separated. `*.fly.dev` / Railway domains are added automatically (see below). Add a custom domain here. |
+| `DJANGO_CSRF_TRUSTED_ORIGINS` | no | Extra full origins (`https://example.org`) if you use a custom domain. |
+| `DJANGO_SECURE_SSL_REDIRECT` | no | Default on in production; set `0` only if terminating TLS yourself. |
+| `DJANGO_SECURE_HSTS_SECONDS` | no | Default `0` (off). Set e.g. `31536000` once you're sure the site is HTTPS-only. |
+| `WEB_CONCURRENCY` | no | gunicorn workers (default 3). |
+
+`ALLOWED_HOSTS` / CSRF are handled for you: `settings.py` appends
+`"<FLY_APP_NAME>.fly.dev"` and Railway's `RAILWAY_PUBLIC_DOMAIN` at runtime, and
+trusts `https://` for every non-local host.
+
+---
+
+## Fly.io
+
+```bash
+# 1. Install flyctl and log in
+curl -L https://fly.io/install.sh | sh
+fly auth login
+
+# 2. From the repo root — edit `app` in fly.toml first if you want a different name
+fly launch --no-deploy --copy-config --name uk-economy-model --region lhr
+
+# 3. Secrets + database
+fly secrets set DJANGO_SECRET_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(50))")
+fly postgres create --name uk-economy-db --region lhr
+fly postgres attach uk-economy-db          # sets DATABASE_URL automatically
+
+# 4. Deploy (build image, run migrations on boot)
+fly deploy
+
+# 5. One-off data load (dimensions + boundaries). Upload your ONS workbooks first,
+#    or run these locally against the same DATABASE_URL (see "Loading data").
+fly ssh console -C "python manage.py seed_v1 --dimensions --geography"
+
+# 6. Admin user
+fly ssh console -C "python manage.py createsuperuser"
+
+# Open it
+fly open            # https://uk-economy-model.fly.dev/places/
+```
+
+## Railway
+
+```bash
+# 1. Install the CLI and log in
+npm i -g @railway/cli && railway login
+
+# 2. New project + Postgres plugin (injects DATABASE_URL)
+railway init
+railway add --plugin postgresql
+
+# 3. Secret
+railway variables set DJANGO_SECRET_KEY=$(python -c "import secrets;print(secrets.token_urlsafe(50))")
+
+# 4. Deploy (Railway builds from the Dockerfile; migrations run via the entrypoint)
+railway up
+
+# 5. Data + admin (run against the deployed service)
+railway run python manage.py seed_v1 --dimensions --geography
+railway run python manage.py createsuperuser
+```
+
+Railway auto-detects the `Dockerfile` and ignores the `Procfile`. The `Procfile`
+is there only for buildpack-based platforms (Render/Heroku).
+
+---
+
+## Loading data
+
+The schema deploys empty. To populate it (same commands as local — see the
+README), run against the hosted database:
+
+```bash
+python manage.py seed_v1 --dimensions --geography     # dimensions + LAD/WPC boundaries
+python manage.py ingest_gva --path data/gva/
+python manage.py ingest_population --path data/gva/populationestimatesbylocalauthority.xlsx --vintage 2020-06-mye
+python manage.py derive_per_head
+```
+
+The ONS workbooks are **not** committed (gitignored `data/`). Either upload them
+to the host before ingesting, or run the ingest commands locally with
+`DATABASE_URL` pointed at the hosted Postgres — the fastest way to seed a remote
+DB from your own machine:
+
+```bash
+export DATABASE_URL="postgres://…"    # the hosted database URL
+python manage.py migrate
+python manage.py seed_v1 --dimensions --geography
+python manage.py ingest_gva --path data/gva/
+python manage.py ingest_population --path data/gva/populationestimatesbylocalauthority.xlsx --vintage 2020-06-mye
+python manage.py derive_per_head
+```
+
+## Notes
+
+- **Migrations on boot:** the entrypoint runs `migrate` each start — fine for a
+  single instance. If you scale to multiple machines, move migration to a
+  release step (Fly `[deploy] release_command`, Railway/Render release phase) to
+  avoid concurrent runs.
+- **Geography edition:** `seed_v1 --geography` currently loads the LAD **December
+  2019** set (to match the 2019 GVA edition) plus the July 2024 WPCs. Swap the
+  `GEO_SOURCES["LAD"]` URL for later phases.
+- **`check --deploy`:** clean apart from HSTS (off by default) and the
+  SECRET_KEY warning (satisfied once you set a real key).

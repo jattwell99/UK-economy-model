@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+db.sqlite3
+staticfiles/
+data/
+.env
+*.bundle
+*.patch
+scratchpad/

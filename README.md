@@ -98,6 +98,14 @@ Three properties are load-bearing and covered by `core/tests/`:
 python manage.py test core
 ```
 
+## Deployment
+
+The repo ships a `Dockerfile` (gunicorn + WhiteNoise), `fly.toml`, and a
+`Procfile`, so it deploys to Fly.io, Railway, Render, or any Docker host. Step-by-step
+for Fly.io and Railway is in [`docs/DEPLOY.md`](docs/DEPLOY.md). In production the
+app reads `DATABASE_URL` and a strong `DJANGO_SECRET_KEY`, runs migrations on boot,
+and serves its own static files.
+
 ## Why Postgres from day one
 
 The observation uniqueness design depends on Postgres NULL-in-unique-constraint
