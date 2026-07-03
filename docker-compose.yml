@@ -1,0 +1,30 @@
+# PostgreSQL for local development. CLAUDE.md mandates Postgres from day one:
+# the observation uniqueness design relies on Postgres NULL-in-unique-constraint
+# semantics, and PostGIS lands in a later phase.
+#
+#   docker compose up -d db
+#   cp .env.example .env         # values already match this service
+#   python manage.py migrate
+#
+# When you add PostGIS, swap the image for postgis/postgis and enable the
+# extension in a migration.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-place_engine}
+      POSTGRES_USER: ${POSTGRES_USER:-place_engine}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-place_engine}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - place_engine_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-place_engine}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  place_engine_pgdata:
