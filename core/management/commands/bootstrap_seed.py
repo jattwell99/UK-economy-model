@@ -25,6 +25,7 @@ from django.core.management.base import BaseCommand
 from core.models import Indicator, Place, PlaceObservation, PlaceTier
 
 GVA_DIR = Path(settings.BASE_DIR) / "seed_data" / "gva"
+GDHI_DIR = Path(settings.BASE_DIR) / "seed_data" / "gdhi"
 POP_FILE = GVA_DIR / "populationestimatesbylocalauthority.xlsx"
 POP_VINTAGE = "2020-06-mye"
 HPI_EDITION = os.environ.get("HPI_EDITION", "2026-04")
@@ -75,6 +76,11 @@ class Command(BaseCommand):
         self._ensure(
             "gva-per-head", _has_obs("gva-per-head"),
             lambda: call_command("derive_per_head"),
+        )
+        # GDHI total + per head (bundled workbooks; per head is ONS's own figure).
+        self._ensure(
+            "GDHI", _has_obs("gdhi-total"),
+            lambda: GDHI_DIR.exists() and call_command("ingest_gdhi", path=str(GDHI_DIR)),
         )
         # Housing — UK House Price Index (fetched over HTTPS).
         self._ensure(

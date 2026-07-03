@@ -62,6 +62,7 @@ DOMAINS = [
 INDICATORS = [
     ("gva-balanced-total", "GVA (balanced), total", "economy", "£m", ValueType.CURRENCY, True, SubjectScope.PLACE),
     ("gva-per-head", "GVA per head", "economy", "£", ValueType.RATIO, False, SubjectScope.PLACE),
+    ("gdhi-total", "Gross disposable household income, total", "economy", "£m", ValueType.CURRENCY, True, SubjectScope.PLACE),
     ("gdhi-per-head", "Gross disposable household income per head", "economy", "£", ValueType.RATIO, False, SubjectScope.PLACE),
     ("employment-rate-16-64", "Employment rate (16-64)", "labour-market", "%", ValueType.RATE, False, SubjectScope.PLACE),
     ("claimant-count", "Claimant count", "labour-market", "count", ValueType.COUNT, True, SubjectScope.PLACE),

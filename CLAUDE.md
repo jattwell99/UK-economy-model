@@ -44,7 +44,8 @@ core/
     ingest_population.py  ONS mid-year LAD population estimates (Phase 3)
     derive_per_head.py    gva-per-head = GVA total x 1e6 / population (Phase 3)
     ingest_hpi.py    UK House Price Index (average price) by LAD, monthly (breadth)
-    bootstrap_seed.py     Idempotent self-seed on deploy (bundled seed_data/)
+    ingest_gdhi.py   ONS GDHI total £m + per-head £ by LAD, annual (breadth)
+    bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
   tests/           Early guarantees + the GVA, population/per-head and HPI verticals
 docs/              Spec + build plan (source of truth)
 ```
@@ -79,7 +80,14 @@ Breadth (docs/phase3_breadth_brief.md), one source per session:
   MONTH periods (`ingest_hpi`, vintage = HPI edition e.g. 2026-04). The seeded
   `median-house-price` was renamed to `average-house-price` (UK HPI is a
   mix-adjusted average, not a median; migration 0002 + seed_v1). Non-additive.
-- GDHI (Source 2) and Nomis labour (Source 3) are specified but NOT yet built.
+- Economy GDHI (Source 2, done): ONS "GDHI local authorities by ITL1 region"
+  (12 bundled workbooks, 1997-2022). `gdhi-total` (£m, additive, seeded) from
+  Table 1 and `gdhi-per-head` (£, non-additive) from Table 3 — per head is ONS's
+  own published figure, NOT derived. CALENDAR_YEAR, latest year PROVISIONAL,
+  vintage 2024-09-04. Sheets picked by title (not number).
+- Nomis labour (Source 3) is specified but NOT yet built.
+- bootstrap_seed loads each dataset independently (existence check) and fetches HPI
+  over HTTPS, so the live DB gains new sources on deploy without a manual load.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are
