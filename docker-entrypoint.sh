@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
-# Apply migrations, then start gunicorn. Bind/port/workers come from
-# gunicorn.conf.py (which reads $PORT in Python), so no shell expansion is needed.
+# Migrate, load bundled data on a fresh DB (idempotent, no-op once seeded), then
+# start gunicorn. Port/workers come from gunicorn.conf.py (reads $PORT in Python).
 set -e
 
 python manage.py migrate --noinput
+python manage.py bootstrap_seed || true
 
 exec gunicorn config.wsgi

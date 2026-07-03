@@ -88,7 +88,14 @@ is there only for buildpack-based platforms (Render/Heroku).
 
 ## Loading data
 
-The schema deploys empty. To populate it (same commands as local — see the
+**Self-seeding (default):** the ONS workbooks are bundled in `seed_data/gva/`, and
+`docker-entrypoint.sh` runs `python manage.py bootstrap_seed` on boot. On a fresh
+(empty) database it loads dimensions, geography and all observations; once data
+exists it no-ops, so it's safe on every boot. A brand-new deploy therefore
+populates itself with no shell access. (If you host with a custom start command
+that overrides the entrypoint, include `python manage.py bootstrap_seed` in it.)
+
+**Manual load** — to populate it yourself (same commands as local — see the
 README), run against the hosted database:
 
 ```bash
