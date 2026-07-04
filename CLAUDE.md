@@ -45,6 +45,7 @@ core/
     derive_per_head.py    gva-per-head = GVA total x 1e6 / population (Phase 3)
     ingest_hpi.py    UK House Price Index (average price) by LAD, monthly (breadth)
     ingest_gdhi.py   ONS GDHI total £m + per-head £ by LAD, annual (breadth)
+    ingest_nomis.py  Nomis API: claimant count, employment rate, pay, jobs density
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
   tests/           Early guarantees + the GVA, population/per-head and HPI verticals
 docs/              Spec + build plan (source of truth)
@@ -85,9 +86,15 @@ Breadth (docs/phase3_breadth_brief.md), one source per session:
   Table 1 and `gdhi-per-head` (£, non-additive) from Table 3 — per head is ONS's
   own published figure, NOT derived. CALENDAR_YEAR, latest year PROVISIONAL,
   vintage 2024-09-04. Sheets picked by title (not number).
-- Nomis labour (Source 3) is specified but NOT yet built.
-- bootstrap_seed loads each dataset independently (existence check) and fetches HPI
-  over HTTPS, so the live DB gains new sources on deploy without a manual load.
+- Labour market (Source 3, done): Nomis live API (`ingest_nomis`), current LAD
+  geography TYPE424, full history, paginated (Nomis caps 25k rows/response).
+  claimant-count (NM_162_1, MONTH, additive), employment-rate-16-64 (NM_17_5
+  var=45 — the RATE lives in NM_17_5 not NM_17_1, CALENDAR/rolling), median-weekly-pay
+  (NM_30_1 ASHE, annual), jobs-density (NM_57_1, annual). Suppressed cells skipped;
+  vintage = pull date; NOMIS_API_KEY passed as &uid= when set (keyless works).
+- bootstrap_seed loads each dataset independently (existence check); fetches HPI +
+  Nomis over HTTPS, so the live DB gains new sources on deploy without a manual load.
+  Phase 3 complete: the explore surface carries 10 indicators per place.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are

@@ -87,6 +87,14 @@ class Command(BaseCommand):
             "HPI (average-house-price)", _has_obs("average-house-price"),
             lambda: call_command("ingest_hpi", edition=HPI_EDITION),
         )
+        # Labour market — Nomis API (each indicator independent; _ensure guards a
+        # Nomis outage / missing NOMIS_API_KEY so it retries on the next deploy).
+        for code in ("claimant-count", "employment-rate-16-64",
+                     "median-weekly-pay", "jobs-density"):
+            self._ensure(
+                f"Nomis {code}", _has_obs(code),
+                lambda c=code: call_command("ingest_nomis", only=c),
+            )
 
         # Admin user — always ensured when a password is provided, independent of any
         # data guard (idempotent create-or-update).

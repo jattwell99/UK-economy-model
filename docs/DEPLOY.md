@@ -24,6 +24,8 @@ so it deploys to any Docker host. Two low-friction paths are documented here:
 | `DJANGO_SECURE_SSL_REDIRECT` | no | Default on in production; set `0` only if terminating TLS yourself. |
 | `DJANGO_SECURE_HSTS_SECONDS` | no | Default `0` (off). Set e.g. `31536000` once you're sure the site is HTTPS-only. |
 | `WEB_CONCURRENCY` | no | gunicorn workers (default 3). |
+| `NOMIS_API_KEY` | no | Nomis labour-market API key, passed as `&uid=`. The API works keyless but rate-limits; recommended for the large claimant-count history pull on first deploy. |
+| `HPI_EDITION` | no | UK HPI edition to load (default `2026-04`). |
 
 `ALLOWED_HOSTS` / CSRF are handled for you: `settings.py` appends
 `"<FLY_APP_NAME>.fly.dev"` and Railway's `RAILWAY_PUBLIC_DOMAIN` at runtime, and
