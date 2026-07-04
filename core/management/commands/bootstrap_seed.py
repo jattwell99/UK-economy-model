@@ -109,6 +109,12 @@ class Command(BaseCommand):
                 f"Nomis {code}", _has_obs(code),
                 lambda c=code: call_command("ingest_nomis", only=c),
             )
+        # Health — life expectancy at birth (England, LAD) from OHID Fingertips.
+        # Fetched live (Fingertips is reachable); published by sex, so two indicators.
+        self._ensure(
+            "Fingertips life expectancy (England)", _has_obs("life-expectancy-birth-male"),
+            lambda: call_command("ingest_fingertips"),
+        )
         # Civic — 2024 general election at the WPC tier (bundled HoC CSV, so the
         # deploy doesn't need parliament.uk egress). New (2023-review) boundaries.
         self._ensure(

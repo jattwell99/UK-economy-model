@@ -26,7 +26,7 @@
       {% for chart in charts %}
         <div class="card">
           <h3>{{ chart.indicator_name }}</h3>
-          <p class="unit">{{ chart.unit }}</p>
+          <p class="unit">{{ chart.unit }}{% if chart.coverage %} · <span class="cov">{{ chart.coverage }}</span>{% endif %}</p>
           <canvas id="chart-{{ forloop.counter0 }}" height="200" aria-label="{{ chart.indicator_name }} trend"></canvas>
           <p class="prov">
             {% for p in chart.provenance %}{{ p.source }} · vintage {{ p.vintage }}{% if not forloop.last %}<br>{% endif %}{% endfor %}
@@ -37,6 +37,17 @@
     {{ charts|json_script:"charts-data" }}
   {% else %}
     <p class="empty">No observations for this place yet.</p>
+  {% endif %}
+
+  {% if coverage_notes %}
+    <div class="coverage">
+      <h3>Not shown here — coverage</h3>
+      <ul>
+        {% for c in coverage_notes %}
+          <li>{{ c.indicator }} <span class="why">— {{ c.note }}</span></li>
+        {% endfor %}
+      </ul>
+    </div>
   {% endif %}
 {% endblock %}
 

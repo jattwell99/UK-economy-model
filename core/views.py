@@ -10,6 +10,7 @@ from django.shortcuts import render
 
 from .selectors import (
     ambiguous_gss_codes,
+    coverage_notes,
     indicators_for_place,
     places_with_observations,
     resolve_place,
@@ -42,5 +43,10 @@ def place_detail(request, gss_code, valid_from=None):
     return render(
         request,
         "explore/place_detail.html",
-        {"place": place, "charts": charts, "indicator_count": len(charts)},
+        {
+            "place": place,
+            "charts": charts,
+            "indicator_count": len(charts),
+            "coverage_notes": coverage_notes(place),
+        },
     )

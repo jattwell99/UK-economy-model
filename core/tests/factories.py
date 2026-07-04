@@ -20,10 +20,10 @@ def make_domain(code="economy", name="Economy"):
 
 
 def make_indicator(domain=None, *, code="gva-balanced-total", is_additive=True,
-                   value_type=ValueType.CURRENCY, unit="£m"):
+                   value_type=ValueType.CURRENCY, unit="£m", name=None):
     return Indicator.objects.create(
         code=code,
-        name=code.replace("-", " ").title(),
+        name=name or code.replace("-", " ").title(),
         domain=domain or make_domain(),
         unit=unit,
         value_type=value_type,

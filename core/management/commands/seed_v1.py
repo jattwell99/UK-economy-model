@@ -70,7 +70,10 @@ INDICATORS = [
     ("jobs-density", "Jobs density", "labour-market", "ratio", ValueType.RATIO, False, SubjectScope.PLACE),
     ("average-house-price", "Average house price (UK HPI)", "housing", "£", ValueType.RATIO, False, SubjectScope.PLACE),
     ("healthy-life-expectancy-birth", "Healthy life expectancy at birth", "health", "years", ValueType.RATIO, False, SubjectScope.PLACE),
-    ("life-expectancy-birth", "Life expectancy at birth", "health", "years", ValueType.RATIO, False, SubjectScope.PLACE),
+    # Life expectancy at birth is published by sex only (no "Persons") — two indicators,
+    # never a fabricated average. See ingest_fingertips.
+    ("life-expectancy-birth-female", "Life expectancy at birth (female)", "health", "years", ValueType.RATIO, False, SubjectScope.PLACE),
+    ("life-expectancy-birth-male", "Life expectancy at birth (male)", "health", "years", ValueType.RATIO, False, SubjectScope.PLACE),
     ("imd-most-deprived-decile-share", "Share of LSOAs in most-deprived decile", "community", "%", ValueType.RATE, False, SubjectScope.PLACE),
     ("turnout", "Turnout", "civic", "%", ValueType.RATE, False, SubjectScope.PLACE),
     ("winning-party-vote-share", "Winning-party vote share", "civic", "%", ValueType.RATE, False, SubjectScope.PLACE),

@@ -13,6 +13,34 @@ from .models import Indicator, Place, PlaceObservation, PlaceTier
 EXPLORE_TIERS = [PlaceTier.LAD, PlaceTier.WPC]
 
 
+# Indicators that do NOT cover the whole UK, so a place outside their nations shows a
+# note instead of a silent blank. label = why; nations = GSS prefixes that DO have data.
+# All of these are LAD-tier, so coverage notes are only surfaced on LAD places.
+PARTIAL_COVERAGE = {
+    "life-expectancy-birth-male": ("England only", {"E"}),
+    "life-expectancy-birth-female": ("England only", {"E"}),
+    "employment-rate-16-64": ("Great Britain only — no Northern Ireland", {"E", "W", "S"}),
+    "median-weekly-pay": ("Great Britain only — no Northern Ireland", {"E", "W", "S"}),
+}
+
+
+def coverage_notes(place):
+    """Partial-coverage indicators NOT available for this place's nation, with the reason.
+
+    Only LAD places carry these indicators, so WPC (and any covered LAD) get no notes.
+    """
+    if place.tier != PlaceTier.LAD:
+        return []
+    missing = [code for code, (_lbl, nations) in PARTIAL_COVERAGE.items()
+               if place.nation not in nations]
+    if not missing:
+        return []
+    names = {i.code: i.name for i in Indicator.objects.filter(code__in=missing)}
+    notes = [{"indicator": names.get(code, code), "note": PARTIAL_COVERAGE[code][0]}
+             for code in missing if code in names]
+    return sorted(notes, key=lambda n: n["indicator"])
+
+
 def places_with_observations(search=None):
     """Places (LAD + WPC) with at least one observation, name-searchable, by name."""
     qs = (
@@ -89,10 +117,12 @@ def series_payload(place, indicator):
         if key not in seen:
             seen.add(key)
             provenance.append({"source": o.source.name, "vintage": o.vintage})
+    cov = PARTIAL_COVERAGE.get(indicator.code)
     return {
         "indicator_code": indicator.code,
         "indicator_name": indicator.name,
         "unit": indicator.unit,
         "points": points,
         "provenance": provenance,
+        "coverage": cov[0] if cov else None,
     }

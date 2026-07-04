@@ -48,6 +48,8 @@ core/
     ingest_nomis.py  Nomis API: claimant count, employment rate, pay, jobs density
     ingest_elections.py   HoC Library GE results by constituency -> WPC, 2015-2024
                           (Phase 4a: 2024; 4b: 2015/2017/2019 on old boundaries)
+    ingest_fingertips.py  OHID Fingertips life expectancy at birth (England, LAD),
+                          by sex, 3-year pooled (Phase 4c health)
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
   tests/           Early guarantees + GVA, population/per-head, HPI and elections verticals
 docs/              Spec + build plan (source of truth)
@@ -141,6 +143,30 @@ load as a SECOND versioned batch of WPC Places (valid_from 2010-05-06, valid_to
   (e.g. "2010–2024" vs "2024–"). Old-boundary WPC↔LAD crosswalks are not built (the
   crosswalk remains 2024-only). Phase 4b complete: 4 elections, 7,800 civic obs.
 
+Phase 4c (health — life expectancy at birth, England, done): OHID Fingertips API
+(`ingest_fingertips`, fetched live — Fingertips is reachable, no bundled file). England
+only: English observations of a UK-wide-methodology indicator go on the shared indicator
+codes; other nations join later from NRS/NISRA/PHW. Key shape decisions from the spike:
+- Life expectancy at birth (Fingertips 90366) is published BY SEX ONLY — there is no
+  "Persons" figure and averaging M/F is wrong. So the seeded `life-expectancy-birth` was
+  SPLIT (migration 0003) into `life-expectancy-birth-male` and `life-expectancy-birth-female`.
+- 3-year POOLED series (`"2001 - 03"` → period_start 2001, period_end 2003), not the
+  volatile single years. Area type 301 ("Districts & UAs 2020/21"), closest to our
+  Dec-2019 spine; Buckinghamshire UA (E06000060) is unmatched (Bucks is a 2020 unitary;
+  our spine has the 4 old districts) — logged, like the Nomis post-2019 unitaries.
+- Category Type filtered to the headline (blank) — Fingertips also carries a within-area
+  LSOA-deprivation-decile breakdown we don't want. ~14k obs, England only.
+- **Healthy life expectancy at birth (90362) is DEFERRED, not shipped:** Fingertips
+  publishes it at UPPER-tier (County/UTLA) only, and we do not model that geography. It
+  stays seeded but unpopulated. This is the FIRST time LAD-only has cost us data — a real
+  spine gap (see "Confirm, don't assume"), not just this indicator's problem.
+- Explore surface: partial-coverage indicators now carry a coverage note. Covered charts
+  show a caption ("England only"); on a place OUTSIDE the coverage the detail page lists
+  the absent indicators with the reason (`selectors.PARTIAL_COVERAGE` / `coverage_notes`)
+  instead of a silent blank — applied to LE (England only) AND the pre-existing GB-only
+  `employment-rate-16-64` / `median-weekly-pay` (no NI). Notes are LAD-only (these
+  indicators don't live at WPC).
+
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are
 specified in the spec but deliberately not yet added — they belong to a later
@@ -189,6 +215,12 @@ session per the build order.
   ~7 post-2019 unitaries (Cumberland, Westmorland & Furness, North Yorkshire, North/West
   Northamptonshire, Buckinghamshire, Somerset) that have no matching Place, so their rows
   are dropped on ingest (logged as "unmatched"). Refreshing the LAD vintage is future work.
+- **No upper-tier (County / UTLA) geography yet — and it now costs us data.** The spine
+  is LAD + WPC only. Healthy life expectancy at birth (and other OHID indicators) is
+  published at County/UTLA, not LAD, so it can't be ingested until an upper-tier tier is
+  modelled (`PlaceTier` already reserves REGION/ITL slots; a County/UTLA tier + an
+  LAD→UTLA lookup is the missing piece). This is the first indicator blocked purely on the
+  spine, not the source — worth revisiting before broadening the health/outcomes picture.
 
 ## Tests worth writing early (all present in `core/tests/`)
 
