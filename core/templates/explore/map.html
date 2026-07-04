@@ -19,6 +19,7 @@
     .slider-row.single { }
     .period-label { font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 92px; }
     #map { height: 640px; border: 1px solid var(--line); border-radius: 8px; }
+    #map .leaflet-interactive { cursor: pointer; }
     .map-note { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
     .legend { background: #fff; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;
       font-size: 12px; line-height: 1.5; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
@@ -131,13 +132,27 @@
     function tooltip(feature) {
       var code = feature.properties.gss_code, name = feature.properties.name;
       var v = current.values[code];
+      var head;
       if (v === undefined) {
-        return "<b>" + name + "</b><br>no data" +
+        head = "<b>" + name + "</b><br>no data" +
                (current.period ? " (" + current.period + ")" : "");
+      } else {
+        var val = v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+        head = "<b>" + name + "</b><br>" + val + " " + current.unit +
+               (current.period ? "<br>" + current.period : "");
       }
-      var val = v.toLocaleString(undefined, { maximumFractionDigits: 2 });
-      return "<b>" + name + "</b><br>" + val + " " + current.unit +
-             (current.period ? "<br>" + current.period : "");
+      return head + "<br><span style='color:#888'>click for detail →</span>";
+    }
+
+    // Detail URL for a clicked region. WPC carries the boundary valid_from of the layer
+    // ON SCREEN, so the 5 codes shared across eras land on the correct version via the
+    // Phase 4b /places/<gss>/v/<valid_from>/ route (2019 period -> old seat, 2024 -> new).
+    // LAD (and unshared codes) use the plain route.
+    function detailUrl(code) {
+      if (current.tier === "WPC" && current.boundary) {
+        return "/places/" + encodeURIComponent(code) + "/v/" + current.boundary + "/";
+      }
+      return "/places/" + encodeURIComponent(code) + "/";
     }
 
     function draw(fit) {
@@ -146,6 +161,9 @@
         style: function (f) { return styleFor(f.properties.gss_code); },
         onEachFeature: function (f, lyr) {
           lyr.bindTooltip(tooltip(f), { className: "region", sticky: true });
+          lyr.on("click", function () { window.location.href = detailUrl(f.properties.gss_code); });
+          lyr.on("mouseover", function () { this.setStyle({ weight: 2, color: "#333" }); });
+          lyr.on("mouseout", function () { this.setStyle({ weight: 0.6, color: "#ffffff" }); });
         },
       }).addTo(map);
       if (fit) { try { map.fitBounds(layer.getBounds(), { padding: [10, 10] }); } catch (e) {} }

@@ -295,6 +295,7 @@ def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):
         "period": resolved,
         "periods": available_years(indicator, tier),   # slider ticks (one => static)
         "layer": _layer_key(tier, boundary_from),       # geometry to match this period
+        "boundary": boundary_from.isoformat() if boundary_from else None,  # click -> versioned URL
         "values": values,
         "unit": indicator.unit,
         "value_type": indicator.value_type,

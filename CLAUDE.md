@@ -242,7 +242,15 @@ Map — choropleth (docs/map_timeslider_brief.md), steps 1-3 done (LAD base map)
 - NOTE: `claimant-count` is additive (a count total), so it is NOT choropleth-able (§8.2
   refuses it, 400) — the brief's slider example named it, but the monthly-stepping path is
   verified with `average-house-price` (monthly, non-additive) instead.
-- Click-to-detail and the comparison tool are NOT yet built (later sessions).
+- Click-to-detail (step 7, done — the map is now complete): clicking a region navigates
+  to its existing place-detail page (reuses `series_payload`; no new query machinery). The
+  click carries the boundary `valid_from` of the layer ON SCREEN (the endpoint returns it
+  as `boundary`), so WPC uses `/places/<gss>/v/<valid_from>/` — the 5 colliding Scottish
+  codes open the OLD seat on a historic period and the NEW seat on 2024 (never newest-wins
+  guessing); LAD uses the plain `/places/<gss>/`. The map feature (steps 1-7) is complete.
+- The multi-region comparison-over-time tool remains a SEPARATE scoping pass (brief §12):
+  "comparable" is a design decision (same tier + matching vintage, normalised only, and/or
+  a peer-grouping that edges toward classification) — scope before building.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are

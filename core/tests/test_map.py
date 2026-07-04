@@ -17,6 +17,7 @@ from core.selectors import (
     available_years,
     choropleth_data,
     mappable_indicators,
+    resolve_place,
 )
 
 from .factories import make_domain, make_indicator, make_observation, make_place, make_source
@@ -245,6 +246,21 @@ class ChoroplethSliderTests(TestCase):
         new = choropleth_data("turnout", tier=PlaceTier.WPC, period="2024")
         self.assertNotEqual(old["values"]["S14000021"], new["values"]["S14000021"])
         self.assertNotEqual(old["layer"], new["layer"])
+
+    def test_click_boundary_lands_on_the_on_screen_version(self):
+        # The `boundary` a period returns is what the click carries into the versioned
+        # URL — resolving it must land on the SAME era the map is showing, for the
+        # colliding Scottish code (2019 -> old seat, 2024 -> new seat).
+        old = choropleth_data("turnout", tier=PlaceTier.WPC, period="2019")
+        new = choropleth_data("turnout", tier=PlaceTier.WPC, period="2024")
+        self.assertEqual(old["boundary"], "2010-05-06")
+        self.assertEqual(new["boundary"], "2024-07-04")
+        p_old = resolve_place("S14000021", valid_from=date.fromisoformat(old["boundary"]))
+        p_new = resolve_place("S14000021", valid_from=date.fromisoformat(new["boundary"]))
+        self.assertEqual(p_old.valid_from, self.OLD_FROM)
+        self.assertEqual(p_old.valid_to, date(2024, 7, 3))
+        self.assertEqual(p_new.valid_from, self.NEW_FROM)
+        self.assertIsNone(p_new.valid_to)
 
 
 class ChoroplethApiViewTests(TestCase):
