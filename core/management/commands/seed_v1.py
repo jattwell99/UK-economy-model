@@ -69,6 +69,9 @@ INDICATORS = [
     ("median-weekly-pay", "Median gross weekly pay (residence)", "labour-market", "£", ValueType.RATIO, False, SubjectScope.PLACE),
     ("jobs-density", "Jobs density", "labour-market", "ratio", ValueType.RATIO, False, SubjectScope.PLACE),
     ("average-house-price", "Average house price (UK HPI)", "housing", "£", ValueType.RATIO, False, SubjectScope.PLACE),
+    # Affordability: ONS's published median-over-median ratio (England & Wales only — ONS
+    # doesn't produce it for Scotland/NI). One E&W indicator, comparable across E&W places.
+    ("house-price-to-earnings-ratio-residence", "House price to residence-based earnings ratio", "housing", "ratio", ValueType.RATIO, False, SubjectScope.PLACE),
     ("healthy-life-expectancy-birth", "Healthy life expectancy at birth", "health", "years", ValueType.RATIO, False, SubjectScope.PLACE),
     # Life expectancy at birth is published by sex only (no "Persons") — two indicators,
     # never a fabricated average. See ingest_fingertips.
@@ -99,6 +102,7 @@ SOURCES = [
     ("ONS Regional accounts (GVA / GDP / GDHI)", "Office for National Statistics", "https://www.ons.gov.uk", "OGL v3.0"),
     ("Nomis", "Office for National Statistics", "https://www.nomisweb.co.uk", "OGL v3.0"),
     ("UK House Price Index", "HM Land Registry", "https://landregistry.data.gov.uk", "OGL v3.0"),
+    ("ONS Housing affordability", "Office for National Statistics", "https://www.ons.gov.uk", "OGL v3.0"),
     ("OHID Fingertips", "Office for Health Improvement and Disparities", "https://fingertips.phe.org.uk", "OGL v3.0"),
     ("English Indices of Deprivation", "Ministry of Housing, Communities and Local Government", "https://www.gov.uk", "OGL v3.0"),
     ("Scottish Index of Multiple Deprivation", "Scottish Government", "https://www.gov.scot", "OGL v3.0"),

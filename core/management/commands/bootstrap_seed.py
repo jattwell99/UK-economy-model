@@ -155,6 +155,12 @@ class Command(BaseCommand):
                 f"Nomis {code}", _has_obs(code),
                 lambda c=code: call_command("ingest_nomis", only=c),
             )
+        # Housing affordability — ONS house-price-to-residence-earnings ratio (E&W, LAD),
+        # fetched live from ONS. Median-over-median; England & Wales only (S/N have their own).
+        self._ensure(
+            "affordability ratio (E&W)", _has_obs("house-price-to-earnings-ratio-residence"),
+            lambda: call_command("ingest_affordability"),
+        )
         # Health — life expectancy at birth (England, LAD) from OHID Fingertips.
         # Fetched live (Fingertips is reachable); published by sex, so two indicators.
         self._ensure(

@@ -24,6 +24,7 @@ PARTIAL_COVERAGE = {
     # release supplies all four nations on one methodology (ingest_le_ons), landing as a
     # new vintage beside the Fingertips England vintage. So LE is no longer partial —
     # it carries no coverage note and no map greying-by-nation.
+    "house-price-to-earnings-ratio-residence": ("England and Wales only", {"E", "W"}),
     "employment-rate-16-64": ("Great Britain only — no Northern Ireland", {"E", "W", "S"}),
     "median-weekly-pay": ("Great Britain only — no Northern Ireland", {"E", "W", "S"}),
     "imd-most-deprived-decile-share-england": ("England only", {"E"}),
@@ -37,6 +38,9 @@ PARTIAL_COVERAGE = {
 # Short, factual "what this measures" notes for indicators whose meaning isn't obvious
 # from the name. Descriptive only — never a ranking or a "which is worse" judgment.
 INDICATOR_DESCRIPTORS = {
+    "house-price-to-earnings-ratio-residence":
+        "Median home price as a multiple of median annual residence-based earnings "
+        "(what people who live here earn); higher = less affordable.",
     "imd-most-deprived-decile-share-england":
         "Share of the area's neighbourhoods (LSOAs) in England's most-deprived 10% — "
         "measures how concentrated the most extreme deprivation is.",

@@ -55,6 +55,17 @@ RESTRUCTURES = [
 # Dec-2019 spine valid_from — the districts to version out all share it.
 SPINE_VALID_FROM = date(2019, 12, 1)
 
+# Pure recodes: some ONS products (life-expectancy, housing affordability) emit new GSS
+# codes for two metropolitan districts whose boundaries did NOT change, while standard ONS
+# LAD geography and other sources still use the old codes. The spine keeps the old code;
+# ingesters map the new code back via this alias so the data lands on the existing Place.
+# Same real place, new identifier — an alias, not a restructure. Shared so the recode set
+# is one truth across ingesters.
+RECODE_ALIASES = {
+    "E08000038": "E08000016",   # Barnsley
+    "E08000039": "E08000019",   # Sheffield
+}
+
 
 class Command(BaseCommand):
     help = "Version-in post-2019 unitary LADs and version-out the abolished districts."

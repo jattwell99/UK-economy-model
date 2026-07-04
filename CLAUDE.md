@@ -46,6 +46,8 @@ core/
     ingest_population.py  ONS mid-year LAD population estimates (Phase 3)
     derive_per_head.py    gva-per-head = GVA total x 1e6 / population (Phase 3)
     ingest_hpi.py    UK House Price Index (average price) by LAD, monthly (breadth)
+    ingest_affordability.py  ONS house-price-to-residence-earnings ratio by LAD, annual
+                          (E&W only — ONS doesn't produce it for S/N; median-over-median)
     ingest_gdhi.py   ONS GDHI total £m + per-head £ by LAD, annual (breadth)
     ingest_nomis.py  Nomis API: claimant count, employment rate, pay, jobs density
     ingest_elections.py   HoC Library GE results by constituency -> WPC, 2015-2024
@@ -425,9 +427,11 @@ DATA:
   abolished districts (valid_to = day before successor) — using the SAME valid_from/valid_to
   versioning as the WPC eras (no model change). The districts' 2,161 historic obs are KEPT
   (never deleted). Called by seed_v1 (fresh) and bootstrap_seed (existing) so both converge.
-- The 2 pure recodes (Barnsley E08000038, Sheffield E08000039 — ONS-LE-product-only; every
-  other source + standard ONS geography still use the spine codes) are handled by a 2-entry
-  RECODE_ALIASES in ingest_le_ons, so ONS LE lands on the existing Place.
+- The 2 pure recodes (Barnsley E08000038, Sheffield E08000039) are handled by a shared
+  RECODE_ALIASES (in refresh_lad_spine) applied by ingest_le_ons AND ingest_affordability —
+  BOTH ONS products use the new codes (standard ONS LAD geography still uses the spine
+  codes), so the alias lands their data on the existing Place. Centralised so the recode
+  set is one truth.
 - bootstrap_seed re-runs the affected ingesters ONCE (GVA/pop/per-head/GDHI/HPI/Nomis/ONS-LE),
   guarded on the Somerset sentinel, so the unitaries' 2020+ data now LANDS instead of
   dropping. Verified: each unitary went 0 → ~1,150 obs across 12 indicators.
@@ -439,6 +443,27 @@ DATA:
   iterates features, so a shapeless place is simply not drawn, no error/mis-colour); they
   appear fully on list / detail / compare. Sequenced after the quick wins (affordability,
   age structure).
+
+Affordability (breadth, done): `ingest_affordability` ingests ONS's published house-price-
+to-residence-based-earnings RATIO (sheet 5c, median-over-median) by LAD, annual 2002→2025,
+fetched live from ons.gov.uk (`.xlsx`, openpyxl). INGESTED not derived — deriving from
+average-house-price (a mean) and median-weekly-pay would mix mean/median AND be GB-only.
+Indicator `house-price-to-earnings-ratio-residence` (ratio, non-additive). Key points:
+- COVERAGE: **England & Wales only** — ONS does NOT produce this for Scotland/NI (they
+  publish their own, different construction). The original scoping brief wrongly assumed
+  four-nations; verified E&W-only before building. `PARTIAL_COVERAGE = ("England and Wales
+  only", {"E","W"})` — map greys S/N, compare drops them, detail notes it. ONE indicator
+  (comparable across E&W), NOT a per-nation split. Scotland/NI affordability = documented
+  follow-up (own sources).
+- 318 LADs on the CURRENT E&W geography — includes the 7 post-2019 unitaries (Somerset
+  8.57, Bucks 10.51 etc.), so the LAD-refresh spine picks them up. The trailing "5-Year
+  Average" column is skipped; suppressed "[x]" cells (e.g. City of London recent years)
+  skipped → honest no-data. Vintage `ons-aff-2025-03`; guarded bootstrap loader.
+- Barnsley/Sheffield RECODES: the affordability product uses the new E08 codes too (NOT
+  ONS-LE-only as first thought), so `RECODE_ALIASES` was centralised in refresh_lad_spine
+  and applied here + in ingest_le_ons — both land on the spine codes. Values plausible
+  (~5–15× nationally, Kensington & Chelsea ~22× / ~26×). Workplace-based ratio (ONS's
+  sibling dataset, also E&W) deferred — one clean headline metric for now.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are
@@ -497,6 +522,8 @@ session per the build order.
   at birth (male/female) since the ONS UK LE re-source (`ingest_le_ons`). Still partial:
   `employment-rate-16-64` and `median-weekly-pay` (both Nomis APS/ASHE) have **no Northern
   Ireland** data (NI labour stats come from NISRA, not these Nomis geographies) — GB-only;
+  `house-price-to-earnings-ratio-residence` is **England & Wales only** (ONS produces the
+  ratio for E&W; S/N have their own sources — a documented follow-up);
   and the deprivation indicators are **single-nation** (each nation has its own index,
   never merged UK-wide, never compared across nations) — IMD **England-only**, SIMD
   **Scotland-only**, NIMDM **Northern-Ireland-only**, WIMD **Wales-only** (four-nations
@@ -505,8 +532,9 @@ session per the build order.
 - Geography-vintage drift: the LAD spine started as the **Dec-2019** set (382). The DATA
   half of the refresh is DONE (`refresh_lad_spine`): the 7 post-2019 unitaries are now
   versioned-in and the 28 abolished districts versioned-out, so those areas' 2020+ data
-  LANDS (389 LAD Place rows across 4 valid_from eras). The 2 ONS-LE recodes (Barnsley/
-  Sheffield) match via an alias. Still outstanding: the MAP geometry (per-feature validity)
+  LANDS (389 LAD Place rows across 4 valid_from eras). The 2 recodes (Barnsley/Sheffield)
+  match via a shared alias (used by ingest_le_ons AND ingest_affordability — both ONS
+  products use the new codes). Still outstanding: the MAP geometry (per-feature validity)
   — until that phase, the 7 unitaries are absent on the map but present everywhere else.
   E10 upper-tier counties are a SEPARATE gap (no County/UTLA tier), not this drift.
 - **No upper-tier (County / UTLA) geography yet — and it now costs us data.** The spine

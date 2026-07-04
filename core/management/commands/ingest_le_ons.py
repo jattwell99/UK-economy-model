@@ -71,14 +71,9 @@ DEFAULT_VINTAGE = "ons-le-2025-12-10"   # release date on the Cover sheet
 SOURCE_NAME = "ONS life expectancy for local areas"
 SOURCE_PUBLISHER = "Office for National Statistics"
 
-# Pure recodes: this ONS product emits new GSS codes for two metropolitan districts that
-# standard ONS LAD geography (and every other source) still codes the old way, so the spine
-# keeps the old code. Map the new code back to the existing Place so the LE lands on it.
-# Same real place, new identifier — an alias, not a restructure (see refresh_lad_spine).
-RECODE_ALIASES = {
-    "E08000038": "E08000016",   # Barnsley
-    "E08000039": "E08000019",   # Sheffield
-}
+# Pure recodes (Barnsley/Sheffield): shared with other ONS products that use the new codes
+# (e.g. housing affordability). Defined once in refresh_lad_spine so the set is one truth.
+from core.management.commands.refresh_lad_spine import RECODE_ALIASES  # noqa: E402
 
 # ONS "Sex" value -> our existing indicator code (published by sex only, no Persons).
 SEX_TO_CODE = {
