@@ -20,8 +20,10 @@ EXPLORE_TIERS = [PlaceTier.LAD, PlaceTier.WPC]
 # note instead of a silent blank. label = why; nations = GSS prefixes that DO have data.
 # All of these are LAD-tier, so coverage notes are only surfaced on LAD places.
 PARTIAL_COVERAGE = {
-    "life-expectancy-birth-male": ("England only", {"E"}),
-    "life-expectancy-birth-female": ("England only", {"E"}),
+    # Life expectancy at birth is now UK-wide: the ONS "LE for local areas of the UK"
+    # release supplies all four nations on one methodology (ingest_le_ons), landing as a
+    # new vintage beside the Fingertips England vintage. So LE is no longer partial —
+    # it carries no coverage note and no map greying-by-nation.
     "employment-rate-16-64": ("Great Britain only — no Northern Ireland", {"E", "W", "S"}),
     "median-weekly-pay": ("Great Britain only — no Northern Ireland", {"E", "W", "S"}),
     "imd-most-deprived-decile-share-england": ("England only", {"E"}),

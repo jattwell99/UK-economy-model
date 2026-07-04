@@ -133,22 +133,25 @@ class CompareTemplateTests(TestCase):
 
 
 class ComparisonCoverageTests(TestCase):
+    """A place outside the indicator's nation coverage is dropped with the reason.
+    Vehicle is the England-only IMD score — life expectancy is UK-wide now."""
+
     def setUp(self):
-        health = make_domain("health", "Health")
-        self.le = make_indicator(health, code="life-expectancy-birth-female",
-                                 is_additive=False, value_type=ValueType.RATIO, unit="years",
-                                 name="Life expectancy at birth (female)")
-        self.src = make_source("OHID Fingertips", "OHID")
+        depr = make_domain("deprivation", "Deprivation")
+        self.imd = make_indicator(depr, code="imd-average-score-england",
+                                  is_additive=False, value_type=ValueType.INDEX, unit="score",
+                                  name="IMD: population-weighted average score (England)")
+        self.src = make_source("MHCLG")
         self.eng = make_place("E07000223", "Adur", tier=PlaceTier.LAD)
         self.eng2 = make_place("E08000003", "Manchester", tier=PlaceTier.LAD)
         self.wales = make_place("W06000019", "Blaenau Gwent", tier=PlaceTier.LAD)
         for p in (self.eng, self.eng2):
-            make_observation(self.le, p, self.src, value=Decimal("83"),
-                             period_start=date(2020, 1, 1), period_end=date(2022, 12, 31),
+            make_observation(self.imd, p, self.src, value=Decimal("22"),
+                             period_start=date(2019, 1, 1), period_end=date(2019, 12, 31),
                              period_type="CALENDAR_YEAR")
 
     def test_non_covered_place_excluded_with_note(self):
-        d = comparison_series("life-expectancy-birth-female", "LAD",
+        d = comparison_series("imd-average-score-england", "LAD",
                               [("E07000223", None), ("E08000003", None), ("W06000019", None)])
         names = {s["place_name"] for s in d["series"]}
         self.assertEqual(names, {"Adur", "Manchester"})       # Wales dropped from the lines

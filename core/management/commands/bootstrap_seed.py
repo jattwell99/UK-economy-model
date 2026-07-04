@@ -37,6 +37,10 @@ POP_FILE_2025 = GVA_DIR / "populationestimatesbylocalauthority-2025.xlsx"
 POP_VINTAGE_2025 = "2025-04-mye"
 PERHEAD_VINTAGE_2025 = f"gva:{GVA_VINTAGE_2025}/pop:{POP_VINTAGE_2025}"
 HPI_EDITION = os.environ.get("HPI_EDITION", "2026-04")
+# Life expectancy at birth for all four nations from the single ONS "LE for local
+# areas of the UK" release (fetched live). Lands as a NEW vintage beside the
+# Fingertips England vintage; latest-vintage-per-period then shows ONS everywhere.
+ONS_LE_VINTAGE = "ons-le-2025-12-10"
 ELECTIONS_DIR = Path(settings.BASE_DIR) / "seed_data" / "elections"
 ELECTIONS_FILE = ELECTIONS_DIR / "HoC-GE2024-results-by-constituency.csv"
 # Historic general elections on the 2010-review (old) boundary set.
@@ -129,6 +133,14 @@ class Command(BaseCommand):
         self._ensure(
             "Fingertips life expectancy (England)", _has_obs("life-expectancy-birth-male"),
             lambda: call_command("ingest_fingertips"),
+        )
+        # Health — life expectancy at birth for ALL FOUR nations from the single ONS
+        # UK release (fetched live). Guard on the ONS vintage so an already-seeded live
+        # DB (England-only Fingertips) gains W/S/N + the ONS England series on deploy.
+        self._ensure(
+            "ONS life expectancy (UK, all nations)",
+            _has_obs_vintage("life-expectancy-birth-male", ONS_LE_VINTAGE),
+            lambda: call_command("ingest_le_ons"),
         )
         # Deprivation — English IoD 2019 at LAD (fetched live from gov.uk). Two metrics
         # (decile-share + population-weighted score) load together from File 7.

@@ -52,6 +52,9 @@ core/
                           (Phase 4a: 2024; 4b: 2015/2017/2019 on old boundaries)
     ingest_fingertips.py  OHID Fingertips life expectancy at birth (England, LAD),
                           by sex, 3-year pooled (Phase 4c health)
+    ingest_le_ons.py  ONS "LE for local areas of the UK" -> LE at birth by sex, ALL
+                          FOUR nations, 3-year pooled (devolved-health; new vintage
+                          beside Fingertips, makes LE UK-wide)
     ingest_imd.py    English IoD 2019 -> LAD: decile-share + pop-weighted score
                           (Phase 4c deprivation, England only, both metrics)
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
@@ -184,6 +187,34 @@ codes; other nations join later from NRS/NISRA/PHW. Key shape decisions from the
   instead of a silent blank — applied to LE (England only) AND the pre-existing GB-only
   `employment-rate-16-64` / `median-weekly-pay` (no NI). Notes are LAD-only (these
   indicators don't live at WPC).
+
+Devolved health — LE UK-wide (all four nations, done): `ingest_le_ons` re-sources life
+expectancy at birth from the SINGLE ONS "Life expectancy for local areas of the UK"
+release (one file, one methodology, all four nations — fetched live from ons.gov.uk; a
+`--path` override exists for local runs). This was **Option B**, chosen after verifying on
+inspection that ONS England equals the current Fingertips values EXACTLY (mean diff 0.000,
+max |diff| 0.00 yrs across sampled LADs at the latest common period — Fingertips 90366 is
+sourced from ONS's own calculation), so there is no methodology gap and no reason to keep
+England on a separate source. Key points:
+- Extends the EXISTING `life-expectancy-birth-male` / `-female` indicators (LE is
+  comparable across nations — no per-nation LE indicators, unlike deprivation).
+- Append-only: lands as a NEW vintage `ons-le-2025-12-10` beside the Fingertips England
+  vintage (nothing overwritten). latest-vintage-per-period then shows ONS everywhere it
+  exists ("ons-…" > "fingertips-…" lexicographically). ~15,400 obs (E=12,540, N=484,
+  S=1,408, W=968), 3-year pooled `"2001 to 2003"` → 2001–2003, 22 periods to 2022–24.
+- Parses sheet "1" (long format, header row 6); keeps Area type "Local Areas", Age group
+  "<1" (at birth), Sex Male/Female (published by sex only, no Persons).
+- Geography: W/S/N match the spine EXACTLY (W06 22/22, S12 32/32, N09 11/11). English
+  E10 counties (upper-tier) and post-2019/recoded LADs are unmatched-by-design (30 total)
+  — the usual Dec-2019 spine drift. Barnsley/Sheffield keep their Fingertips series
+  (Fingertips uses old E08 codes, ONS the recoded ones) — no data lost, no regression.
+- Coverage flip: LE removed from `selectors.PARTIAL_COVERAGE` — it's UK-wide now, so no
+  coverage caption and no map greying-by-nation. The map's England-only greying shrinks at
+  every period ≤ 2022 (W/S/N shade). ONE wrinkle: Fingertips carries a 2023–25 England
+  point ONS (ends 2022–24) doesn't, so the slider's DEFAULT latest tick (2023) is
+  England-only — slide back one year and all four nations appear. This is the true data
+  state (England has one fresher LE period), surfaced honestly by the slider; the map's
+  default-period logic was left unchanged (a cross-indicator design choice).
 
 Phase 4c (deprivation — English IoD 2019, done): `ingest_imd` fetches IoD 2019
 "File 7" live from gov.uk (reachable — no upload). One file carries LSOA code, LAD
@@ -346,11 +377,14 @@ session per the build order.
   from LSOA/OA lookups are wired in.
 - The UK is four statistical systems. `nation` is first-class on Place. Never
   create a single UK-wide deprivation indicator — model each nation separately.
-- **Nation coverage is NOT uniformly UK-wide, even now.** As of Phase 4b: GVA, GDHI,
-  population, HPI, claimant-count, jobs-density and all civic indicators cover E/W/S/N;
-  but `employment-rate-16-64` and `median-weekly-pay` (both Nomis APS/ASHE) have **no
-  Northern Ireland** data (NI labour stats come from NISRA, not these Nomis geographies)
-  — they are GB-only. Check per-indicator coverage before assuming a place has a value.
+- **Nation coverage is NOT uniformly UK-wide, even now.** UK-wide (E/W/S/N): GVA, GDHI,
+  population, HPI, claimant-count, jobs-density, all civic indicators, AND life expectancy
+  at birth (male/female) since the ONS UK LE re-source (`ingest_le_ons`). Still partial:
+  `employment-rate-16-64` and `median-weekly-pay` (both Nomis APS/ASHE) have **no Northern
+  Ireland** data (NI labour stats come from NISRA, not these Nomis geographies) — GB-only;
+  and the IMD deprivation indicators are **England-only** (each nation has its own index,
+  never merged UK-wide). Check per-indicator coverage (`selectors.PARTIAL_COVERAGE`) before
+  assuming a place has a value.
 - Geography-vintage drift: the LAD spine is the **Dec-2019** set (382). Nomis reports
   ~7 post-2019 unitaries (Cumberland, Westmorland & Furness, North Yorkshire, North/West
   Northamptonshire, Buckinghamshire, Somerset) that have no matching Place, so their rows

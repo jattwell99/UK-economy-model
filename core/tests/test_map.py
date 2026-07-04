@@ -54,23 +54,27 @@ class ChoroplethValueTests(TestCase):
 
 
 class ChoroplethNoDataTests(TestCase):
-    """no_data folds in BOTH nation-absence and within-coverage holes (§8.1)."""
+    """no_data folds in BOTH nation-absence and within-coverage holes (§8.1).
+
+    Vehicle is an England-only indicator (IMD average score) — life expectancy is no
+    longer partial now that the ONS UK release supplies all four nations.
+    """
 
     def setUp(self):
-        health = make_domain("health", "Health")
-        self.le = make_indicator(health, code="life-expectancy-birth-female",
-                                 is_additive=False, value_type=ValueType.RATIO, unit="years",
-                                 name="Life expectancy at birth (female)")
-        self.src = make_source("OHID Fingertips", "OHID")
+        depr = make_domain("deprivation", "Deprivation")
+        self.imd = make_indicator(depr, code="imd-average-score-england",
+                                  is_additive=False, value_type=ValueType.INDEX, unit="score",
+                                  name="IMD: population-weighted average score (England)")
+        self.src = make_source("MHCLG")
         self.eng = make_place("E07000223", "Adur", tier=PlaceTier.LAD)          # has data
         self.eng_hole = make_place("E07000224", "Arun", tier=PlaceTier.LAD)     # English, no data
         self.wales = make_place("W06000019", "Blaenau Gwent", tier=PlaceTier.LAD)  # nation-absent
-        make_observation(self.le, self.eng, self.src, value=Decimal("83.1"),
-                         period_start=date(2020, 1, 1), period_end=date(2022, 12, 31),
+        make_observation(self.imd, self.eng, self.src, value=Decimal("22.5"),
+                         period_start=date(2019, 1, 1), period_end=date(2019, 12, 31),
                          period_type="CALENDAR_YEAR")
 
     def test_both_kinds_of_absence_are_no_data(self):
-        data = choropleth_data("life-expectancy-birth-female", tier=PlaceTier.LAD)
+        data = choropleth_data("imd-average-score-england", tier=PlaceTier.LAD)
         self.assertIn("E07000223", data["values"])
         self.assertNotIn("E07000223", data["no_data"])
         # nation-absence: Wales greyed
@@ -79,8 +83,35 @@ class ChoroplethNoDataTests(TestCase):
         self.assertIn("E07000224", data["no_data"])
 
     def test_coverage_block_reports_england_only(self):
-        data = choropleth_data("life-expectancy-birth-female", tier=PlaceTier.LAD)
+        data = choropleth_data("imd-average-score-england", tier=PlaceTier.LAD)
         self.assertEqual(data["coverage"], {"nations": ["E"], "note": "England only"})
+
+
+class ChoroplethLifeExpectancyUkWideTests(TestCase):
+    """Life expectancy is UK-wide now: no coverage note, and a Welsh place with an
+    ONS observation shades rather than being greyed as nation-absent."""
+
+    def setUp(self):
+        health = make_domain("health", "Health")
+        self.le = make_indicator(health, code="life-expectancy-birth-female",
+                                 is_additive=False, value_type=ValueType.RATIO, unit="years",
+                                 name="Life expectancy at birth (female)")
+        self.src = make_source("ONS life expectancy for local areas", "ONS")
+        self.eng = make_place("E07000223", "Adur", tier=PlaceTier.LAD)
+        self.wales = make_place("W06000019", "Blaenau Gwent", tier=PlaceTier.LAD)
+        for p, v in [(self.eng, "83.1"), (self.wales, "82.7")]:
+            make_observation(self.le, p, self.src, value=Decimal(v),
+                             period_start=date(2022, 1, 1), period_end=date(2024, 12, 31),
+                             period_type="CALENDAR_YEAR")
+
+    def test_no_coverage_note(self):
+        data = choropleth_data("life-expectancy-birth-female", tier=PlaceTier.LAD)
+        self.assertEqual(data["coverage"], {"nations": None, "note": None})
+
+    def test_welsh_place_is_shaded_not_greyed(self):
+        data = choropleth_data("life-expectancy-birth-female", tier=PlaceTier.LAD)
+        self.assertIn("W06000019", data["values"])
+        self.assertNotIn("W06000019", data["no_data"])
 
 
 class ChoroplethAdditiveGuardTests(TestCase):
