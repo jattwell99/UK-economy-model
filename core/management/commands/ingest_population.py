@@ -38,7 +38,10 @@ from core.models import (
     ValueType,
 )
 
-SHEET = "Data population"
+# The 2019 edition's sheet was "Data population"; the 2025 edition renamed it
+# "Population data" and the code column "Region Code"/"LAD code" -> "LA code". Both handled.
+SHEET_CANDIDATES = ("Data population", "Population data")
+CODE_COLS = ("Region Code", "LAD code", "Code", "LA code")
 INDICATOR_CODE = "population"
 SOURCE_NAME = "ONS mid-year population estimates"
 SOURCE_PUBLISHER = "Office for National Statistics"
@@ -51,22 +54,21 @@ def _year(cell):
     return None
 
 
-def parse_population(path, sheet=SHEET):
+def parse_population(path):
     """Yield (gss_code, name, year, Decimal count)."""
     wb = load_workbook(path, read_only=True, data_only=True)
-    ws = wb[sheet] if sheet in wb.sheetnames else wb.active
+    ws = next((wb[s] for s in SHEET_CANDIDATES if s in wb.sheetnames), wb.active)
 
     header, hrow = None, None
     for i, row in enumerate(ws.iter_rows(min_row=1, max_row=8, values_only=True)):
-        if any(str(c).strip() in ("Region Code", "LAD code", "Code")
-               for c in row if c is not None):
+        if any(str(c).strip() in CODE_COLS for c in row if c is not None):
             header, hrow = list(row), i
             break
     if header is None:
         raise CommandError(f"{path}: no header row found.")
 
     code_j = next(j for j, c in enumerate(header)
-                  if str(c).strip() in ("Region Code", "LAD code", "Code"))
+                  if str(c).strip() in CODE_COLS)
     name_j = code_j + 1
     years = {j: y for j, c in enumerate(header) if (y := _year(c))}
 

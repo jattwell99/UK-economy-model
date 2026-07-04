@@ -78,6 +78,20 @@ Each phase ends in: migration applied + a test + something verifiable in admin.
 - 3: ONS LAD population estimates ingested (8,162 obs); `gva-per-head` derived
   from GVA total / population (7,749 obs) against a "Derived" source with a
   dual-input vintage. `population` is additive; `gva-per-head` is not.
+- Staleness refresh (done): the 2025 ONS editions land as NEW vintages beside the
+  2019/2020 ones (append-only) — GVA `2025-04-17` and population `2025-04-mye`, both now
+  running to **2023** (was 2018/2019); `derive_per_head` re-run extends gva-per-head to
+  2023 (dual-vintage `gva:2025-04-17/pop:2025-04-mye`). latest-vintage-per-period makes
+  every surface show the fresh series; the old vintages remain (nothing overwritten).
+  The 2025 edition drifted the workbook layout — GVA current-price moved to a `Table N`
+  sheet (no `Current Price`), code column `LAD code`→`LA code`, population sheet
+  `Data population`→`Population data` — so `ingest_gva`/`ingest_population` now handle
+  BOTH layouts (resolve the current-price sheet by its OWN title cell, not the Contents
+  listing). Both editions' files are bundled in `seed_data/gva/`; a single `ingest_gva`
+  run loads both by auto-detected vintage. bootstrap guards are vintage-keyed so a live
+  DB pulls the refresh on deploy. The 2025 edition references post-2019 unitaries absent
+  from the Dec-2019 spine (Buckinghamshire, Somerset, the new Cumbria/Yorkshire/
+  Northants/Scottish unitaries) — logged as unmatched, the usual geography drift.
 - Explore surface (read layer, docs/explore_surface_v1_brief.md): `/places/` list
   + name search and `/places/<gss_code>/` detail with one trend chart per
   indicator (latest vintage per period) and a provenance label. No rankings.

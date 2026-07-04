@@ -46,7 +46,11 @@ from core.models import (
 )
 
 FILE_GLOB = "regionalgrossvalueaddedbalancedbyindustrylocalauthorities*.xlsx"
-SHEET = "Current Price"                 # current basic prices, pounds million
+SHEET = "Current Price"                 # current basic prices sheet (2019 edition)
+# The 2025 edition renamed the sheets (Table 1-4) and drops "Current Price"; the
+# current-price table is the one whose title says so. Code column also went
+# "LAD code" -> "LA code". Both layouts are handled (see _resolve_price_sheet / CODE_COLS).
+CODE_COLS = ("LAD code", "LA code")
 INDICATOR_CODE = "gva-balanced-total"
 SOURCE_NAME = "ONS Regional accounts (GVA / GDP / GDHI)"
 SOURCE_PUBLISHER = "Office for National Statistics"
@@ -79,26 +83,44 @@ def _detect_vintage(wb):
     return None
 
 
-def parse_gva_totals(path, sheet=SHEET):
+def _resolve_price_sheet(wb, fname):
+    """The current-basic-prices sheet, across edition layouts.
+
+    2019 edition: a sheet literally named "Current Price". 2025 edition: the tables
+    are "Table 1".."Table 4" and the current-price one is identified by its title
+    text ("current prices"). Fall back to that title scan.
+    """
+    if SHEET in wb.sheetnames:
+        return wb[SHEET]
+    # Match on each sheet's OWN title cell (A1) — not any cell — so the "Contents"
+    # sheet (which lists every table's title, including the current-price one) doesn't
+    # win over the actual data table.
+    for name in wb.sheetnames:
+        ws = wb[name]
+        title = next((row[0] for row in ws.iter_rows(min_row=1, max_row=1, values_only=True)), None)
+        if title and "current price" in str(title).lower():
+            return ws
+    raise CommandError(f"{fname}: no current-price sheet (has {wb.sheetnames}).")
+
+
+def parse_gva_totals(path):
     """Yield (gss_code, la_name, year, Decimal value) for total-economy rows."""
     wb = load_workbook(path, read_only=True, data_only=True)
-    if sheet not in wb.sheetnames:
-        raise CommandError(f"{os.path.basename(path)}: no '{sheet}' sheet "
-                           f"(has {wb.sheetnames}).")
-    ws = wb[sheet]
+    ws = _resolve_price_sheet(wb, os.path.basename(path))
 
     header, hrow = None, None
     for i, row in enumerate(ws.iter_rows(min_row=1, max_row=8, values_only=True)):
-        if any(str(c).strip() == "LAD code" for c in row if c is not None):
+        if any(str(c).strip() in CODE_COLS for c in row if c is not None):
             header, hrow = list(row), i
             break
     if header is None:
-        raise CommandError(f"{os.path.basename(path)}: no header row with 'LAD code'.")
+        raise CommandError(f"{os.path.basename(path)}: no header row with a code column "
+                           f"{CODE_COLS}.")
 
     col = {}
     for j, c in enumerate(header):
         s = str(c).strip() if c is not None else ""
-        if s == "LAD code":
+        if s in CODE_COLS:
             col["code"] = j
         elif s == "LA name":
             col["name"] = j

@@ -28,6 +28,14 @@ GVA_DIR = Path(settings.BASE_DIR) / "seed_data" / "gva"
 GDHI_DIR = Path(settings.BASE_DIR) / "seed_data" / "gdhi"
 POP_FILE = GVA_DIR / "populationestimatesbylocalauthority.xlsx"
 POP_VINTAGE = "2020-06-mye"
+# 2025 ONS editions (staleness refresh): GVA now runs to 2023, population to 2023.
+# Both editions' files sit in GVA_DIR; a single ingest_gva run loads both by
+# auto-detected vintage. Guards key on the NEW vintage so an already-seeded live DB
+# gains the fresh edition (old rows update in place; new years append).
+GVA_VINTAGE_2025 = "2025-04-17"
+POP_FILE_2025 = GVA_DIR / "populationestimatesbylocalauthority-2025.xlsx"
+POP_VINTAGE_2025 = "2025-04-mye"
+PERHEAD_VINTAGE_2025 = f"gva:{GVA_VINTAGE_2025}/pop:{POP_VINTAGE_2025}"
 HPI_EDITION = os.environ.get("HPI_EDITION", "2026-04")
 ELECTIONS_DIR = Path(settings.BASE_DIR) / "seed_data" / "elections"
 ELECTIONS_FILE = ELECTIONS_DIR / "HoC-GE2024-results-by-constituency.csv"
@@ -75,20 +83,27 @@ class Command(BaseCommand):
             "geography", Place.objects.filter(tier=PlaceTier.LAD).exists(),
             lambda: call_command("seed_v1", geography=True),
         )
-        # GVA total (bundled workbooks).
+        # GVA total (bundled workbooks: 2019 + 2025 editions; one ingest_gva run loads
+        # both by auto-detected vintage). Guard on the 2025 edition so a live DB gains it.
         self._ensure(
-            "GVA", _has_obs("gva-balanced-total"),
+            "GVA (2025 edition)", _has_obs_vintage("gva-balanced-total", GVA_VINTAGE_2025),
             lambda: GVA_DIR.exists() and call_command("ingest_gva", path=str(GVA_DIR)),
         )
-        # Population (bundled workbook).
+        # Population — 2020 and 2025 editions as distinct vintages beside each other.
         self._ensure(
-            "population", _has_obs("population"),
+            "population (2020 edition)", _has_obs_vintage("population", POP_VINTAGE),
             lambda: POP_FILE.exists() and call_command(
                 "ingest_population", path=str(POP_FILE), vintage=POP_VINTAGE),
         )
-        # GVA per head (derived from the two above).
         self._ensure(
-            "gva-per-head", _has_obs("gva-per-head"),
+            "population (2025 edition)", _has_obs_vintage("population", POP_VINTAGE_2025),
+            lambda: POP_FILE_2025.exists() and call_command(
+                "ingest_population", path=str(POP_FILE_2025), vintage=POP_VINTAGE_2025),
+        )
+        # GVA per head (derived; re-derive when the newest dual-input edition is missing —
+        # latest-vintage-per-place-year means it extends to wherever GVA+pop now overlap).
+        self._ensure(
+            "gva-per-head (2025 edition)", _has_obs_vintage("gva-per-head", PERHEAD_VINTAGE_2025),
             lambda: call_command("derive_per_head"),
         )
         # GDHI total + per head (bundled workbooks; per head is ONS's own figure).
