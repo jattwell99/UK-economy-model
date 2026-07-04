@@ -59,6 +59,8 @@ core/
                           (Phase 4c deprivation, England only, both metrics)
     ingest_simd.py   Scottish SIMD 2020v2 -> LAD: most-deprived-decile share
                           (Phase 4c deprivation, Scotland only; rank-based, no score)
+    ingest_nimdm.py  NI NIMDM 2017 (bundled CSV) -> LAD: most-deprived-decile share
+                          (Phase 4c deprivation, NI only; rank-based, no score)
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
   tests/           Early guarantees + GVA, population/per-head, HPI and elections verticals
 docs/              Spec + build plan (source of truth)
@@ -275,7 +277,33 @@ Key correctness points:
   so the map greys E/W/N, compare drops non-Scottish selections with the reason, and the
   detail page notes it absent for non-Scottish places. Factual descriptor added (concentration
   within Scotland only; not cross-nation comparable). Top: Inverclyde 31.6%, Glasgow 30.4%;
-  island councils 0%. NI and Wales deprivation are later sessions.
+  island councils 0%.
+
+Devolved deprivation — Northern Ireland NIMDM (done): `ingest_nimdm` reads the NIMDM 2017
+SOA-level results — one metric, `nimdm-most-deprived-decile-share-northern-ireland` (%, RATE,
+non-additive): share of a district's SOAs in NI's most-deprived decile. NIMDM is rank-based
+with NO published score → decile-share only (no synthesis), same discipline as SIMD/IMD.
+NI-only; never merged UK-wide / never compared across nations (seed_v1 + migration 0006).
+Key points:
+- BUNDLED (`seed_data/nimdm/nimdm2017-soa.csv`), not fetched live: NISRA publishes only a
+  legacy multi-sheet `.xls` (needs an extra reader dep + fragile parsing), and the clean
+  flat CSV (same NISRA data via the official Open Data NI portal) blocks default clients
+  (HTTP 403) with unverifiable deploy egress. Tiny file → bundle it (elections precedent),
+  no new dependency. Source recorded as NISRA.
+- Decile DERIVED from the MDM rank (no decile column): most-deprived decile = ceil(N/10)
+  lowest-ranked = rank ≤ 89 of 890 SOAs. NO rounding ambiguity — 890/10 = 89 exactly, and
+  NISRA explicitly defines decile 1 = ranks 1-89. VALIDATED against NISRA's own published
+  figures: the 10 most-deprived SOAs split 5 Belfast / 5 Derry City & Strabane, reproduced
+  EXACTLY by the rank→LGD aggregation.
+- Roll-up is by CODE, not name: the file's `LGD2014code` IS the N09 GSS code, so it joins
+  straight to the 11 N09 spine Places (11/11) — no name alias (unlike SIMD's councils). An
+  unmatched LGD FAILS LOUDLY. SOAs (the 2001-defined 890, still NISRA's current set) are
+  aggregated through; raw SOA ranks NEVER stored.
+- POINT period at the edition date (2017-11-23), vintage NIMDM2017.
+  `PARTIAL_COVERAGE["nimdm-…-northern-ireland"] = ("Northern Ireland only", {"N"})` so the
+  map greys E/W/S, compare drops non-NI selections, and the detail page notes it absent for
+  non-NI places. Factual descriptor added. Top: Belfast 27.0%, Derry 25.3%; Lisburn &
+  Castlereagh / Mid Ulster 0%. Wales (WIMD) is the last deprivation session.
 
 Map — choropleth (docs/map_timeslider_brief.md), COMPLETE (steps 1-7: geometry, endpoint,
 base map, quantile honesty, tier toggle, time slider, click-to-detail):
@@ -421,9 +449,10 @@ session per the build order.
   `employment-rate-16-64` and `median-weekly-pay` (both Nomis APS/ASHE) have **no Northern
   Ireland** data (NI labour stats come from NISRA, not these Nomis geographies) — GB-only;
   and the deprivation indicators are **single-nation** (each nation has its own index,
-  never merged UK-wide, never compared across nations) — IMD is **England-only**, SIMD is
-  **Scotland-only** (Wales WIMD / NI NIMDM are later sessions). Check per-indicator coverage
-  (`selectors.PARTIAL_COVERAGE`) before assuming a place has a value.
+  never merged UK-wide, never compared across nations) — IMD **England-only**, SIMD
+  **Scotland-only**, NIMDM **Northern-Ireland-only** (Wales WIMD is the last, next session).
+  Check per-indicator coverage (`selectors.PARTIAL_COVERAGE`) before assuming a place has a
+  value.
 - Geography-vintage drift: the LAD spine is the **Dec-2019** set (382). Nomis reports
   ~7 post-2019 unitaries (Cumberland, Westmorland & Furness, North Yorkshire, North/West
   Northamptonshire, Buckinghamshire, Somerset) that have no matching Place, so their rows

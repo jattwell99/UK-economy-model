@@ -41,6 +41,7 @@ HPI_EDITION = os.environ.get("HPI_EDITION", "2026-04")
 # areas of the UK" release (fetched live). Lands as a NEW vintage beside the
 # Fingertips England vintage; latest-vintage-per-period then shows ONS everywhere.
 ONS_LE_VINTAGE = "ons-le-2025-12-10"
+NIMDM_FILE = Path(settings.BASE_DIR) / "seed_data" / "nimdm" / "nimdm2017-soa.csv"
 ELECTIONS_DIR = Path(settings.BASE_DIR) / "seed_data" / "elections"
 ELECTIONS_FILE = ELECTIONS_DIR / "HoC-GE2024-results-by-constituency.csv"
 # Historic general elections on the 2010-review (old) boundary set.
@@ -154,6 +155,13 @@ class Command(BaseCommand):
             "SIMD deprivation (Scotland)",
             _has_obs("simd-most-deprived-decile-share-scotland"),
             lambda: call_command("ingest_simd"),
+        )
+        # Deprivation — NI NIMDM 2017 at LGD (bundled CSV: NISRA ships only legacy .xls,
+        # Open Data NI's CSV blocks default clients). Rank-based, decile-share only. NI-only.
+        self._ensure(
+            "NIMDM deprivation (Northern Ireland)",
+            _has_obs("nimdm-most-deprived-decile-share-northern-ireland"),
+            lambda: NIMDM_FILE.exists() and call_command("ingest_nimdm"),
         )
         # Civic — 2024 general election at the WPC tier (bundled HoC CSV, so the
         # deploy doesn't need parliament.uk egress). New (2023-review) boundaries.
