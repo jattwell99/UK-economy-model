@@ -142,7 +142,9 @@
             });
             results.appendChild(li);
           });
-          results.style.display = d.places && d.places.length ? "" : "none";
+          // Show with "block", NOT "" — the base CSS rule is `.cmp-results{display:none}`,
+          // so clearing the inline style would fall back to that and stay hidden.
+          results.style.display = d.places && d.places.length ? "block" : "none";
         });
     }
 

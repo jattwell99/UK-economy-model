@@ -119,6 +119,19 @@ class ComparisonRuleTests(TestCase):
         self.assertEqual(len(d["series"]), 2)
 
 
+class CompareTemplateTests(TestCase):
+    def test_results_dropdown_shown_with_block_not_empty_string(self):
+        # Regression: the picker's results list has a base CSS rule
+        # `.cmp-results { display: none }`, so it MUST be shown with display="block".
+        # Setting display="" clears the inline style and falls back to that hidden base
+        # rule, so the dropdown never appears and no place can be selected — the tool
+        # looks broken though the endpoint works.
+        html = self.client.get("/compare/").content.decode()
+        self.assertIn("display: none", html)              # base rule present
+        self.assertIn('? "block" : "none"', html)          # show-path uses block
+        self.assertNotIn('length ? "" : "none"', html)     # never the ineffective ""
+
+
 class ComparisonCoverageTests(TestCase):
     def setUp(self):
         health = make_domain("health", "Health")
