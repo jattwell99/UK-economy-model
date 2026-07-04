@@ -21,6 +21,20 @@ PARTIAL_COVERAGE = {
     "life-expectancy-birth-female": ("England only", {"E"}),
     "employment-rate-16-64": ("Great Britain only — no Northern Ireland", {"E", "W", "S"}),
     "median-weekly-pay": ("Great Britain only — no Northern Ireland", {"E", "W", "S"}),
+    "imd-most-deprived-decile-share-england": ("England only", {"E"}),
+    "imd-average-score-england": ("England only", {"E"}),
+}
+
+
+# Short, factual "what this measures" notes for indicators whose meaning isn't obvious
+# from the name. Descriptive only — never a ranking or a "which is worse" judgment.
+INDICATOR_DESCRIPTORS = {
+    "imd-most-deprived-decile-share-england":
+        "Share of the area's neighbourhoods (LSOAs) in England's most-deprived 10% — "
+        "measures how concentrated the most extreme deprivation is.",
+    "imd-average-score-england":
+        "Population-weighted average of the area's neighbourhood deprivation scores — "
+        "measures the overall level across the whole area.",
 }
 
 
@@ -125,4 +139,5 @@ def series_payload(place, indicator):
         "points": points,
         "provenance": provenance,
         "coverage": cov[0] if cov else None,
+        "descriptor": INDICATOR_DESCRIPTORS.get(indicator.code),
     }

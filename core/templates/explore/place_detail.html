@@ -27,6 +27,7 @@
         <div class="card">
           <h3>{{ chart.indicator_name }}</h3>
           <p class="unit">{{ chart.unit }}{% if chart.coverage %} · <span class="cov">{{ chart.coverage }}</span>{% endif %}</p>
+          {% if chart.descriptor %}<p class="desc">{{ chart.descriptor }}</p>{% endif %}
           <canvas id="chart-{{ forloop.counter0 }}" height="200" aria-label="{{ chart.indicator_name }} trend"></canvas>
           <p class="prov">
             {% for p in chart.provenance %}{{ p.source }} · vintage {{ p.vintage }}{% if not forloop.last %}<br>{% endif %}{% endfor %}

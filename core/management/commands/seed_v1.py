@@ -74,7 +74,11 @@ INDICATORS = [
     # never a fabricated average. See ingest_fingertips.
     ("life-expectancy-birth-female", "Life expectancy at birth (female)", "health", "years", ValueType.RATIO, False, SubjectScope.PLACE),
     ("life-expectancy-birth-male", "Life expectancy at birth (male)", "health", "years", ValueType.RATIO, False, SubjectScope.PLACE),
-    ("imd-most-deprived-decile-share", "Share of LSOAs in most-deprived decile", "community", "%", ValueType.RATE, False, SubjectScope.PLACE),
+    # Deprivation is per-nation, never merged UK-wide. England = English IoD (see
+    # ingest_imd). Two metrics loaded side by side: a ranking-derived decile share and
+    # a cardinal population-weighted average score.
+    ("imd-most-deprived-decile-share-england", "IMD: share of LSOAs in most-deprived national decile (England)", "community", "%", ValueType.RATE, False, SubjectScope.PLACE),
+    ("imd-average-score-england", "IMD: population-weighted average score (England)", "community", "score", ValueType.INDEX, False, SubjectScope.PLACE),
     ("turnout", "Turnout", "civic", "%", ValueType.RATE, False, SubjectScope.PLACE),
     ("winning-party-vote-share", "Winning-party vote share", "civic", "%", ValueType.RATE, False, SubjectScope.PLACE),
     ("majority", "Majority", "civic", "count", ValueType.COUNT, True, SubjectScope.PLACE),

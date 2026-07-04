@@ -115,6 +115,12 @@ class Command(BaseCommand):
             "Fingertips life expectancy (England)", _has_obs("life-expectancy-birth-male"),
             lambda: call_command("ingest_fingertips"),
         )
+        # Deprivation — English IoD 2019 at LAD (fetched live from gov.uk). Two metrics
+        # (decile-share + population-weighted score) load together from File 7.
+        self._ensure(
+            "IoD deprivation (England)", _has_obs("imd-average-score-england"),
+            lambda: call_command("ingest_imd"),
+        )
         # Civic — 2024 general election at the WPC tier (bundled HoC CSV, so the
         # deploy doesn't need parliament.uk egress). New (2023-review) boundaries.
         self._ensure(

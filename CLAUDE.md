@@ -50,6 +50,8 @@ core/
                           (Phase 4a: 2024; 4b: 2015/2017/2019 on old boundaries)
     ingest_fingertips.py  OHID Fingertips life expectancy at birth (England, LAD),
                           by sex, 3-year pooled (Phase 4c health)
+    ingest_imd.py    English IoD 2019 -> LAD: decile-share + pop-weighted score
+                          (Phase 4c deprivation, England only, both metrics)
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
   tests/           Early guarantees + GVA, population/per-head, HPI and elections verticals
 docs/              Spec + build plan (source of truth)
@@ -166,6 +168,29 @@ codes; other nations join later from NRS/NISRA/PHW. Key shape decisions from the
   instead of a silent blank — applied to LE (England only) AND the pre-existing GB-only
   `employment-rate-16-64` / `median-weekly-pay` (no NI). Notes are LAD-only (these
   indicators don't live at WPC).
+
+Phase 4c (deprivation — English IoD 2019, done): `ingest_imd` fetches IoD 2019
+"File 7" live from gov.uk (reachable — no upload). One file carries LSOA code, LAD
+code+name (2019), IMD Score, IMD Decile, and mid-2015 population, so no separate
+LSOA→LAD lookup or population file is needed. LSOAs are aggregated through to LAD (they
+are NOT Place rows); raw LSOA ranks are never stored. 317/317 English LADs matched, 0
+unmatched. Deprivation is per-nation and NEVER merged UK-wide — these are England-only
+codes; devolved nations join later from their own indices. TWO metrics kept side by
+side (a deliberate no-ranking choice — dropping one would editorialise about which kind
+of deprivation counts):
+- `imd-most-deprived-decile-share-england` (%, RATE, non-additive) = share of the LAD's
+  LSOAs in England's most-deprived national decile. Ranking-derived; measures
+  concentration of extreme deprivation. Saturates at 0 for 123/317 LADs — a reason not
+  to rely on it alone, hence keeping both.
+- `imd-average-score-england` (score, INDEX, non-additive) = population-weighted mean of
+  LSOA IMD scores. Cardinal; measures overall level; discriminates across the full range.
+The seeded `imd-most-deprived-decile-share` was renamed to the England code and the score
+indicator added (migration 0004). POINT period at the edition date (2019-09-26), vintage
+IoD2019; the 2025 update loads later as a new vintage + period. Blackpool tops the score
+(uniformly deprived) while Middlesbrough tops the decile-share (most LSOAs in the worst
+decile) — the divergence proving the two aren't redundant. Explore surface: each IMD
+chart carries a short factual descriptor (concentration vs overall level, no judgment)
+plus the England-only coverage note. This completes the England outcomes work.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are
