@@ -12,6 +12,12 @@
     .map-controls { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; flex-wrap: wrap; }
     .map-controls label { font-size: 14px; color: var(--muted); }
     .map-controls select { padding: 7px 10px; font-size: 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    .slider-row { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; }
+    .slider-row input[type=range] { flex: 1; max-width: 560px; }
+    .slider-row button { border: 1px solid var(--line); background: #fff; border-radius: 6px;
+      width: 34px; height: 30px; font-size: 13px; cursor: pointer; }
+    .slider-row.single { }
+    .period-label { font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; min-width: 92px; }
     #map { height: 640px; border: 1px solid var(--line); border-radius: 8px; }
     .map-note { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
     .legend { background: #fff; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;
@@ -38,7 +44,12 @@
     </select>
     <label for="indicator">Indicator</label>
     <select id="indicator"></select>
-    <span id="period-label" class="map-note"></span>
+  </div>
+
+  <div class="slider-row" id="slider-row">
+    <button type="button" id="play" aria-label="Play through time">▶</button>
+    <input type="range" id="slider" min="0" max="0" step="1" value="0" aria-label="Time period">
+    <span id="period-label" class="period-label"></span>
   </div>
 
   <div id="map"></div>
@@ -55,10 +66,12 @@
   <script>
   (function () {
     var API = "{% url 'explore:choropleth_api' %}";
-    // Per-tier static geometry (2024 WPC set for now; the 2010 set arrives with the slider).
+    // Static geometry keyed by LAYER (the endpoint tells us which one a period needs, so
+    // WPC swaps between the 2010-review and 2024 sets as the slider crosses the boundary).
     var GEO_URL = {
-      LAD: "{% static 'geo/lad.geojson' %}",
-      WPC: "{% static 'geo/wpc-2024.geojson' %}",
+      "lad": "{% static 'geo/lad.geojson' %}",
+      "wpc-2024": "{% static 'geo/wpc-2024.geojson' %}",
+      "wpc-2010": "{% static 'geo/wpc-2010.geojson' %}",
     };
     var INDICATORS = {
       LAD: JSON.parse(document.getElementById("inds-lad").textContent),
@@ -70,10 +83,14 @@
 
     var map = L.map("map", { minZoom: 5, maxZoom: 10 }).setView([54.6, -3.2], 6);
     var geo = null, layer = null, current = null, bandColors = [];
-    var geoCache = {};   // tier -> parsed GeoJSON (fetch each layer once)
+    var geoCache = {};   // layer key -> parsed GeoJSON (fetch each layer once)
+    var periods = [], playTimer = null;
 
     var tierSel = document.getElementById("tier");
     var picker = document.getElementById("indicator");
+    var slider = document.getElementById("slider");
+    var sliderRow = document.getElementById("slider-row");
+    var playBtn = document.getElementById("play");
 
     // Sample the ramp across however many quantile bands the data yields (breaks may
     // collapse when values repeat), so light->dark always spans the full range.
@@ -123,7 +140,7 @@
              (current.period ? "<br>" + current.period : "");
     }
 
-    function draw() {
+    function draw(fit) {
       if (layer) layer.remove();
       layer = L.geoJSON(geo, {
         style: function (f) { return styleFor(f.properties.gss_code); },
@@ -131,7 +148,7 @@
           lyr.bindTooltip(tooltip(f), { className: "region", sticky: true });
         },
       }).addTo(map);
-      try { map.fitBounds(layer.getBounds(), { padding: [10, 10] }); } catch (e) {}
+      if (fit) { try { map.fitBounds(layer.getBounds(), { padding: [10, 10] }); } catch (e) {} }
     }
 
     var legend = L.control({ position: "bottomright" });
@@ -154,27 +171,60 @@
 
     function tier() { return tierSel.value; }
 
-    function load(code) {
-      fetch(API + "?indicator=" + encodeURIComponent(code) + "&tier=" + tier())
-        .then(function (r) { return r.json(); })
-        .then(function (data) {
-          if (data.error) { alert(data.error); return; }
-          current = data;
-          bandColors = computeBandColors(data.breaks || []);
-          document.getElementById("period-label").textContent =
-            data.period ? "Period: " + data.period : "";
-          document.getElementById("coverage-note").textContent =
-            data.coverage.note
-              ? data.coverage.note + " — regions outside coverage are shown as “no data”, not zero."
-              : "Grey = no data for this period (never the light end of the scale).";
-          draw();
-          if (legendAdded) legend.remove();
-          legend.addTo(map); legendAdded = true;
-        });
+    // Load the geometry a response asks for (the layer can change mid-slide for WPC),
+    // then run cb. Each layer is fetched once and cached.
+    function ensureLayer(key, cb) {
+      if (geoCache[key]) { cb(geoCache[key]); return; }
+      fetch(GEO_URL[key]).then(function (r) { return r.json(); })
+        .then(function (g) { geoCache[key] = g; cb(g); });
     }
 
-    // Rebuild the indicator picker for the current tier (civic at WPC, economy/health
-    // etc at LAD — only what actually exists at that tier, non-additive only).
+    // Sync the slider to the indicator's available periods. One period => static:
+    // hide the slider and just label the period, so a single-point indicator (IMD, a
+    // 2024-only seat) never fakes a trend or a moving choropleth.
+    function syncSlider(data) {
+      periods = data.periods || [];
+      var single = periods.length <= 1;
+      slider.style.display = single ? "none" : "";
+      playBtn.style.display = single ? "none" : "";
+      sliderRow.classList.toggle("single", single);
+      if (!single) {
+        slider.max = periods.length - 1;
+        var idx = periods.indexOf(String(data.period));
+        slider.value = idx < 0 ? periods.length - 1 : idx;
+      }
+      document.getElementById("period-label").textContent =
+        (data.period ? data.period : "") + (single ? " (single period)" : "");
+    }
+
+    function render(data) {
+      current = data;
+      bandColors = computeBandColors(data.breaks || []);
+      document.getElementById("coverage-note").textContent =
+        data.coverage.note
+          ? data.coverage.note + " — regions outside coverage are shown as “no data”, not zero."
+          : "Grey = no data for this period (never the light end of the scale).";
+      ensureLayer(data.layer, function (g) {
+        geo = g;
+        var changed = data.layer !== lastLayerKey;
+        lastLayerKey = data.layer;
+        draw(changed);   // only re-fit the viewport when the geometry layer changes
+        if (legendAdded) legend.remove();
+        legend.addTo(map); legendAdded = true;
+        syncSlider(data);
+      });
+    }
+
+    var lastLayerKey = null;
+    function load(code, period) {
+      var url = API + "?indicator=" + encodeURIComponent(code) + "&tier=" + tier();
+      if (period) url += "&period=" + encodeURIComponent(period);
+      fetch(url).then(function (r) { return r.json(); }).then(function (data) {
+        if (data.error) { alert(data.error); return; }
+        render(data);
+      });
+    }
+
     function rebuildPicker() {
       var list = INDICATORS[tier()] || [];
       picker.innerHTML = "";
@@ -185,26 +235,37 @@
       });
     }
 
-    function loadTier(preferred) {
+    function reset(preferred) {
+      stopPlay();
       rebuildPicker();
       if (preferred) {
         for (var i = 0; i < picker.options.length; i++) {
           if (picker.options[i].value === preferred) { picker.selectedIndex = i; break; }
         }
       }
-      if (!picker.value) return;
-      var t = tier();
-      var apply = function (g) { geo = g; load(picker.value); };
-      if (geoCache[t]) { apply(geoCache[t]); }
-      else {
-        fetch(GEO_URL[t]).then(function (r) { return r.json(); })
-          .then(function (g) { geoCache[t] = g; apply(g); });
-      }
+      if (picker.value) load(picker.value);   // no period => latest
     }
 
-    tierSel.addEventListener("change", function () { loadTier(); });
-    picker.addEventListener("change", function () { load(picker.value); });
-    loadTier("gva-per-head");   // default: LAD, GVA per head
+    function stopPlay() {
+      if (playTimer) { clearInterval(playTimer); playTimer = null; playBtn.textContent = "▶"; }
+    }
+
+    slider.addEventListener("input", function () {
+      if (periods.length) load(picker.value, periods[+slider.value]);
+    });
+    playBtn.addEventListener("click", function () {
+      if (playTimer) { stopPlay(); return; }
+      playBtn.textContent = "⏸";
+      playTimer = setInterval(function () {
+        var next = (+slider.value + 1);
+        if (next > periods.length - 1) { stopPlay(); return; }
+        slider.value = next;
+        load(picker.value, periods[next]);
+      }, 900);
+    });
+    tierSel.addEventListener("change", function () { reset(); });
+    picker.addEventListener("change", function () { stopPlay(); load(picker.value); });
+    reset("gva-per-head");   // default: LAD, GVA per head, latest period
   })();
   </script>
 {% endblock %}

@@ -14,6 +14,7 @@ from django.test import TestCase
 from core.models import PlaceTier, ValueType
 from core.selectors import (
     ChoroplethError,
+    available_years,
     choropleth_data,
     mappable_indicators,
 )
@@ -176,6 +177,74 @@ class ChoroplethTierTests(TestCase):
         self.assertNotIn("gva-per-head", wpc_codes)
         # Additive majority excluded even though it's a WPC indicator.
         self.assertNotIn("majority", wpc_codes)
+
+
+class ChoroplethSliderTests(TestCase):
+    """Time slider: period lists per indicator, single-point handling, and the
+    per-period date-window boundary resolver (brief §5, §8.3)."""
+
+    OLD_FROM, NEW_FROM = date(2010, 5, 6), date(2024, 7, 4)
+
+    def setUp(self):
+        econ = make_domain("economy", "Economy")
+        civic = make_domain("civic", "Civic")
+        community = make_domain("community", "Community")
+        self.src = make_source("mixed")
+        self.pph = make_indicator(econ, code="gva-per-head", is_additive=False,
+                                  value_type=ValueType.RATIO, unit="£")
+        self.turnout = make_indicator(civic, code="turnout", is_additive=False,
+                                      value_type=ValueType.RATE, unit="%")
+        self.imd = make_indicator(community, code="imd-average-score-england",
+                                  is_additive=False, value_type=ValueType.INDEX, unit="score",
+                                  name="IMD score (England)")
+        # LAD multi-year economy
+        lad = make_place("E07000223", "Adur", tier=PlaceTier.LAD)
+        for yr, v in [(2016, 50), (2017, 55), (2018, 60)]:
+            make_observation(self.pph, lad, self.src, value=Decimal(v),
+                             period_start=date(yr, 1, 1), period_end=date(yr, 12, 31))
+        make_observation(self.imd, lad, self.src, value=Decimal("22"),
+                         period_start=date(2019, 9, 26), period_end=date(2019, 9, 26),
+                         period_type="POINT")
+        # A constituency that exists in BOTH boundary eras (colliding Scottish-style code).
+        self.old = make_place("S14000021", "East Renfrewshire", tier=PlaceTier.WPC,
+                              valid_from=self.OLD_FROM, valid_to=date(2024, 7, 3))
+        self.new = make_place("S14000021", "East Renfrewshire", tier=PlaceTier.WPC,
+                              valid_from=self.NEW_FROM)
+        for yr, place, v in [(2015, self.old, 81), (2019, self.old, 77), (2024, self.new, 67)]:
+            make_observation(self.turnout, place, self.src, value=Decimal(v),
+                             period_start=date(yr, 6, 1), period_end=date(yr, 6, 1),
+                             period_type="POINT")
+
+    def test_period_list_spans_boundary_eras(self):
+        self.assertEqual(available_years(self.turnout, PlaceTier.WPC),
+                         ["2015", "2019", "2024"])
+        self.assertEqual(available_years(self.pph, PlaceTier.LAD),
+                         ["2016", "2017", "2018"])
+
+    def test_single_point_indicator(self):
+        d = choropleth_data("imd-average-score-england", tier=PlaceTier.LAD)
+        self.assertEqual(d["periods"], ["2019"])   # client hides the slider on len==1
+
+    def test_response_carries_periods_and_layer(self):
+        d = choropleth_data("gva-per-head", tier=PlaceTier.LAD)
+        self.assertEqual(d["layer"], "lad")
+        self.assertIn("periods", d)
+
+    def test_historic_period_uses_old_boundary_layer_and_values(self):
+        d = choropleth_data("turnout", tier=PlaceTier.WPC, period="2019")
+        self.assertEqual(d["layer"], "wpc-2010")            # old geometry
+        self.assertEqual(d["values"]["S14000021"], 77.0)    # old seat's 2019 value
+
+    def test_current_period_uses_new_boundary_layer_and_values(self):
+        d = choropleth_data("turnout", tier=PlaceTier.WPC, period="2024")
+        self.assertEqual(d["layer"], "wpc-2024")            # 2024 geometry
+        self.assertEqual(d["values"]["S14000021"], 67.0)    # 2024 seat's value
+
+    def test_colliding_code_resolves_per_era_not_bleeding(self):
+        old = choropleth_data("turnout", tier=PlaceTier.WPC, period="2019")
+        new = choropleth_data("turnout", tier=PlaceTier.WPC, period="2024")
+        self.assertNotEqual(old["values"]["S14000021"], new["values"]["S14000021"])
+        self.assertNotEqual(old["layer"], new["layer"])
 
 
 class ChoroplethApiViewTests(TestCase):

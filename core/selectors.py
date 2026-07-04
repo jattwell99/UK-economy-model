@@ -6,6 +6,9 @@ The one rule that matters here: observations are append-only by vintage, so a
 ONE series per indicator = the latest vintage per period. Never all vintages.
 """
 
+from collections import Counter
+from datetime import date
+
 from .models import Indicator, Place, PlaceObservation, PlaceTier
 
 
@@ -186,6 +189,36 @@ def _quantile_breaks(values, n_classes=6):
     return out if len(out) > 1 else [s[0], s[-1] if s[-1] > s[0] else s[0] + 1]
 
 
+# WPC boundary versions -> the static geometry layer they map to (docs §8.3).
+_WPC_BOUNDARY_LAYER = {
+    date(2024, 7, 4): "wpc-2024",   # 2023-review set (GE2024)
+    date(2010, 5, 6): "wpc-2010",   # 2010-review set (GE2015/17/19)
+}
+
+
+def _layer_key(tier, boundary_from):
+    """Which static GeoJSON layer matches this tier + boundary version."""
+    if tier == PlaceTier.LAD:
+        return "lad"
+    if tier == PlaceTier.WPC:
+        return _WPC_BOUNDARY_LAYER.get(boundary_from, "wpc-2024")
+    return None
+
+
+def available_years(indicator, tier):
+    """Sorted distinct period years for an indicator across ALL boundary versions.
+
+    Drives the time slider (brief §5). Spans both WPC boundary eras so a constituency
+    indicator exposes 2015/17/19 AND 2024. A single entry => a static, single-point
+    indicator (IMD, a 2024-only seat) — the client hides the slider rather than fake
+    motion.
+    """
+    years = (PlaceObservation.objects
+             .filter(indicator=indicator, place__tier=tier)
+             .dates("period_start", "year", order="ASC"))
+    return [str(d.year) for d in years]
+
+
 def _resolve_period(qs, period):
     """Narrow a queryset to a single period and return (qs, resolved_label).
 
@@ -220,12 +253,7 @@ def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):
             f"{indicator_code!r} is an additive total — a choropleth of a total is "
             f"misleading (see §8.2). Use its per-head / rate equivalent.", status=400)
 
-    # Scope to the CURRENT boundary set (valid_to IS NULL) — LAD (Dec-2019) and the
-    # WPC July-2024 seats. This keeps the 5 Scottish codes shared across boundary eras
-    # from colliding, and matches the geometry layers shipped now. The time slider will
-    # replace this with a per-period date-window resolver when the old WPC layer lands.
-    base = PlaceObservation.objects.filter(
-        indicator=indicator, place__tier=tier, place__valid_to__isnull=True)
+    base = PlaceObservation.objects.filter(indicator=indicator, place__tier=tier)
     qs, resolved = _resolve_period(base, period)
 
     # One value per place: newest period_start within the window, then newest vintage.
@@ -234,11 +262,23 @@ def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):
     rows = (qs.select_related("place")
               .order_by("place_id", "-period_start", "-vintage")
               .distinct("place_id"))
-    values = {o.place.gss_code: float(o.value) for o in rows}
+    values, vfroms = {}, Counter()
+    for o in rows:
+        values[o.place.gss_code] = float(o.value)
+        vfroms[o.place.valid_from] += 1
 
-    # The map's universe = every current-boundary place in this tier (matches geometry).
-    universe = set(Place.objects.filter(
-        tier=tier, valid_to__isnull=True).values_list("gss_code", flat=True))
+    # Period-driven boundary resolver (brief §8.3): observations for one period all sit
+    # on a single boundary version (2015/17/19 on the 2010-review seats, 2024 on the
+    # 2023-review seats — the years never overlap), so the matched places' valid_from
+    # tells us which boundary set — and therefore which geometry layer — this period
+    # belongs to. The universe (for no_data) and the layer both follow from it, so a
+    # 2019 period paints 2019 values onto 2010-review shapes, never 2024 ones.
+    boundary_from = vfroms.most_common(1)[0][0] if vfroms else None
+    if boundary_from is not None:
+        universe = set(Place.objects.filter(
+            tier=tier, valid_from=boundary_from).values_list("gss_code", flat=True))
+    else:
+        universe = set(Place.objects.filter(tier=tier).values_list("gss_code", flat=True))
     no_data = sorted(universe - set(values))
 
     nums = list(values.values())
@@ -253,6 +293,8 @@ def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):
         "indicator": indicator.code,
         "tier": tier,
         "period": resolved,
+        "periods": available_years(indicator, tier),   # slider ticks (one => static)
+        "layer": _layer_key(tier, boundary_from),       # geometry to match this period
         "values": values,
         "unit": indicator.unit,
         "value_type": indicator.value_type,

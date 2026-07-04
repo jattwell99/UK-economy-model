@@ -225,7 +225,24 @@ Map — choropleth (docs/map_timeslider_brief.md), steps 1-3 done (LAD base map)
   (`valid_to IS NULL`) so the 5 codes shared across WPC eras don't collide (S14000021
   resolves to its 2024 value) — the time slider will swap this for a per-period
   date-window resolver + the 2010 WPC layer.
-- Time slider, click-to-detail and the comparison tool are NOT yet built (later sessions).
+- Time slider (step 6, done): driven by the ACTUAL periods for the selected indicator
+  (`available_years`, returned as `periods` on each response), stepped BY YEAR — monthly
+  series (HPI) collapse to year ticks via `.dates("period_start","year")`, not hundreds
+  of ticks. SINGLE-PERIOD indicators (IMD's one 2019 point) hide the slider and label the
+  period static — no faked motion. A play button auto-advances.
+- Historic WPC boundaries move WITH the period (§8.3): the current-boundary scoping was
+  replaced by a per-period resolver. Observations for one period all sit on one boundary
+  version (2015/17/19 on the 2010-review seats, 2024 on the 2023-review seats — years
+  never overlap), so the matched places' `valid_from` determines both the universe and
+  the geometry `layer` returned. The client swaps `static/geo/wpc-2010.geojson` ↔
+  `wpc-2024.geojson` as the slider crosses 2024. 2010 layer = ONS Dec-2021 UGCB (the
+  2010-review boundaries were stable 2010-2023), 650/650 GSS join to the old WPC Places.
+  The 5 colliding Scottish codes resolve to the OLD seat's value on a historic period and
+  the NEW seat's on 2024 — no cross-era bleed.
+- NOTE: `claimant-count` is additive (a count total), so it is NOT choropleth-able (§8.2
+  refuses it, 400) — the brief's slider example named it, but the monthly-stepping path is
+  verified with `average-house-price` (monthly, non-additive) instead.
+- Click-to-detail and the comparison tool are NOT yet built (later sessions).
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are
