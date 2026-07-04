@@ -29,6 +29,8 @@ GDHI_DIR = Path(settings.BASE_DIR) / "seed_data" / "gdhi"
 POP_FILE = GVA_DIR / "populationestimatesbylocalauthority.xlsx"
 POP_VINTAGE = "2020-06-mye"
 HPI_EDITION = os.environ.get("HPI_EDITION", "2026-04")
+ELECTIONS_FILE = (Path(settings.BASE_DIR) / "seed_data" / "elections"
+                  / "HoC-GE2024-results-by-constituency.csv")
 
 
 def _has_obs(code):
@@ -95,6 +97,13 @@ class Command(BaseCommand):
                 f"Nomis {code}", _has_obs(code),
                 lambda c=code: call_command("ingest_nomis", only=c),
             )
+        # Civic — 2024 general election at the WPC tier (bundled HoC CSV, so the
+        # deploy doesn't need parliament.uk egress).
+        self._ensure(
+            "elections (2024 GE)", _has_obs("turnout"),
+            lambda: ELECTIONS_FILE.exists() and call_command(
+                "ingest_elections", path=str(ELECTIONS_FILE)),
+        )
 
         # Admin user — always ensured when a password is provided, independent of any
         # data guard (idempotent create-or-update).

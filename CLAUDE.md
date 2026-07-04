@@ -46,8 +46,9 @@ core/
     ingest_hpi.py    UK House Price Index (average price) by LAD, monthly (breadth)
     ingest_gdhi.py   ONS GDHI total £m + per-head £ by LAD, annual (breadth)
     ingest_nomis.py  Nomis API: claimant count, employment rate, pay, jobs density
+    ingest_elections.py   HoC Library 2024 GE results by constituency -> WPC (Phase 4a)
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
-  tests/           Early guarantees + the GVA, population/per-head and HPI verticals
+  tests/           Early guarantees + GVA, population/per-head, HPI and elections verticals
 docs/              Spec + build plan (source of truth)
 ```
 
@@ -95,6 +96,24 @@ Breadth (docs/phase3_breadth_brief.md), one source per session:
 - bootstrap_seed loads each dataset independently (existence check); fetches HPI +
   Nomis over HTTPS, so the live DB gains new sources on deploy without a manual load.
   Phase 3 complete: the explore surface carries 10 indicators per place.
+
+Phase 4a (civic — 2024 GE at WPC tier, done): HoC Library results-by-constituency
+CSV (`ingest_elections --path`), bundled in `seed_data/elections/` because the
+deploy can't reach parliament.uk (WAF blocks datacentre IPs — Railway too). Matches
+ONS ID -> WPC Place (July-2024 set); 650/650 matched, 0 unmatched. Three indicators
+under a `civic` domain, all POINT period at the election date (2024-07-04), source
+"House of Commons Library — elections", vintage GE2024:
+- `turnout` (%, non-additive) = (valid + invalid votes) / electorate × 100. This is
+  the OFFICIAL turnout (all ballots cast, not just valid) — matches published figures.
+- `winning-party-vote-share` (%, non-additive) = winner votes / valid votes × 100.
+  Winner votes read from the `First party` column's vote count, falling back to
+  `Of which other winner` when the winner isn't one of the tracked parties (Ind /
+  Speaker / minor). No party dimension in V1 — party name kept only to locate the count.
+- `majority` (count, additive) = the published Majority column.
+This is the FIRST WPC-tier data. `selectors.EXPLORE_TIERS` now covers LAD + WPC (was
+LAD-only), so a constituency renders on both the explore list (with a tier chip) and
+the detail page. Crosswalk roll-up honours the flags: majority sums, turnout/share refuse.
+Phase 4b (historic election series) is a later session — deliberately not started.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are

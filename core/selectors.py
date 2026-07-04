@@ -9,12 +9,16 @@ ONE series per indicator = the latest vintage per period. Never all vintages.
 from .models import Indicator, Place, PlaceObservation, PlaceTier
 
 
+# Tiers that carry explorable observations (LAD economy/labour/housing, WPC civic).
+EXPLORE_TIERS = [PlaceTier.LAD, PlaceTier.WPC]
+
+
 def places_with_observations(search=None):
-    """LADs that have at least one observation, name-searchable, ordered by name."""
+    """Places (LAD + WPC) with at least one observation, name-searchable, by name."""
     qs = (
-        Place.objects.filter(tier=PlaceTier.LAD, observations__isnull=False)
+        Place.objects.filter(tier__in=EXPLORE_TIERS, observations__isnull=False)
         .distinct()
-        .order_by("name")
+        .order_by("name", "tier")
     )
     if search:
         qs = qs.filter(name__icontains=search)
@@ -22,9 +26,10 @@ def places_with_observations(search=None):
 
 
 def resolve_place(gss_code):
-    """Resolve a GSS code to a single LAD Place (latest boundary version)."""
+    """Resolve a GSS code to a single Place (latest boundary version). Tier-agnostic —
+    a GSS code is unique to its tier (E14… constituency vs E08… local authority)."""
     return (
-        Place.objects.filter(tier=PlaceTier.LAD, gss_code=gss_code)
+        Place.objects.filter(tier__in=EXPLORE_TIERS, gss_code=gss_code)
         .order_by("-valid_from")
         .first()
     )
