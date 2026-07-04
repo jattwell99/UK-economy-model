@@ -156,6 +156,22 @@ session per the build order.
 - `is_additive` gates crosswalk roll-ups. Summing a rate/ratio/per-head across
   places is always wrong — `core.aggregation.rollup_place_value` refuses it.
 
+## Deployment & environment gotchas (rediscovered too often — read this)
+
+- **The deploy remote is `ukmodel` (github.com/jattwell99/UK-economy-model), NOT
+  `origin`.** Railway builds from `ukmodel/main`. Shipping = push the branch to
+  `ukmodel` and fast-forward `ukmodel/main` there. `origin`
+  (`jattwell99/first-repository`) is a separate scaffold repo and has UNRELATED git
+  history (no common ancestor) — pushing there does NOT deploy anything.
+- **The commit-signing stop-hook warning is expected noise — ignore it.** This
+  environment has no SSH signing key, so GitHub marks commits "Unverified"; the
+  committer email (`noreply@anthropic.com`) is already correct. Do not amend/rebase
+  to chase it.
+- Live site: https://web-production-f8c36.up.railway.app — reachable over HTTPS to
+  verify after a deploy. The container can reach gov.uk / ONS / Nomis but NOT
+  parliament.uk (WAF 403) and NOT the Railway DB ports (egress blocked), which is why
+  election files are bundled in `seed_data/` and loaded by `bootstrap_seed` on deploy.
+
 ## Confirm, don't assume
 
 - ONS ArcGIS FeatureServer URLs and CSV column names drift between editions —
@@ -164,6 +180,15 @@ session per the build order.
   from LSOA/OA lookups are wired in.
 - The UK is four statistical systems. `nation` is first-class on Place. Never
   create a single UK-wide deprivation indicator — model each nation separately.
+- **Nation coverage is NOT uniformly UK-wide, even now.** As of Phase 4b: GVA, GDHI,
+  population, HPI, claimant-count, jobs-density and all civic indicators cover E/W/S/N;
+  but `employment-rate-16-64` and `median-weekly-pay` (both Nomis APS/ASHE) have **no
+  Northern Ireland** data (NI labour stats come from NISRA, not these Nomis geographies)
+  — they are GB-only. Check per-indicator coverage before assuming a place has a value.
+- Geography-vintage drift: the LAD spine is the **Dec-2019** set (382). Nomis reports
+  ~7 post-2019 unitaries (Cumberland, Westmorland & Furness, North Yorkshire, North/West
+  Northamptonshire, Buckinghamshire, Somerset) that have no matching Place, so their rows
+  are dropped on ingest (logged as "unmatched"). Refreshing the LAD vintage is future work.
 
 ## Tests worth writing early (all present in `core/tests/`)
 
