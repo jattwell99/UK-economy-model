@@ -418,11 +418,6 @@ OrganisationSite, OrganisationClassification, OrganisationObservation) are
 specified in the spec but deliberately not yet added — they belong to a later
 session per the build order.
 
-Organisation cluster models (Organisation, OrganisationIdentifier,
-OrganisationSite, OrganisationClassification, OrganisationObservation) are
-specified in the spec but deliberately not yet added — they belong to a later
-session per the build order.
-
 ## Conventions
 
 - Surrogate PKs everywhere; natural keys are unique + indexed fields.
