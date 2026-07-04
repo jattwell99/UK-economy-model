@@ -36,8 +36,10 @@ core/
   admin.py         Admin with the autocomplete / list_select_related gotchas applied
   aggregation.py   Crosswalk roll-up gated by Indicator.is_additive (latest vintage per period)
   selectors.py     Read-side queries for the explore surface (latest-vintage-per-period series)
-  views.py/urls.py Explore surface: /places/ list + /places/<gss_code>/ detail
-  templates/explore/  Server-rendered list + detail (Chart.js from cdnjs)
+  views.py/urls.py Explore surface: /places/ list + /places/<gss_code>/ detail;
+                   /map/ choropleth + /api/choropleth/ JSON endpoint
+  templates/explore/  Server-rendered list + detail + map (Chart.js / Leaflet from cdnjs)
+  static/geo/      Bundled generalised boundary GeoJSON for the map (lad.geojson)
   management/commands/
     seed_v1.py       Dimensions, SIC tree, geography (LAD Dec-2019 + WPC), crosswalk
     ingest_gva.py    ONS regional GVA (balanced) by LAD -> PlaceObservation (Phase 2)
@@ -191,6 +193,26 @@ IoD2019; the 2025 update loads later as a new vintage + period. Blackpool tops t
 decile) — the divergence proving the two aren't redundant. Explore surface: each IMD
 chart carries a short factual descriptor (concentration vs overall level, no judgment)
 plus the England-only coverage note. This completes the England outcomes work.
+
+Map — choropleth (docs/map_timeslider_brief.md), steps 1-3 done (LAD base map):
+- Geometry: ONS UGCB (ultra-generalised clipped) Dec-2019 LAD, matching the spine
+  vintage; simplified with mapshaper to WGS84, `static/geo/lad.geojson` (~260KB, props
+  gss_code+name). GSS join to Place is 382/382 both ways (no drift — geometry and spine
+  share the Dec-2019 vintage). `STATICFILES_DIRS` added so project-root static/ is served.
+- Endpoint `GET /api/choropleth/?indicator=&tier=LAD&period=` (`selectors.choropleth_data`)
+  returns the brief's §4 shape (values / unit / value_type / is_additive / scale /
+  coverage / no_data). Reuses latest-vintage-per-period (order by place_id, -period_start,
+  -vintage, distinct place_id — NOT the "place" FK, which expands to Place.Meta ordering
+  and breaks DISTINCT ON). period = YYYY / YYYY-MM / latest.
+- Honesty baked in from the start (§8): `no_data` = every in-tier place lacking a value
+  this period, folding in BOTH nation-absence (England-only over W/S/N, from
+  PARTIAL_COVERAGE) AND within-England holes (HPI/LE don't reach every LAD) — the map
+  renders these as a distinct grey, NEVER the light end of the scale. Additive totals are
+  refused (400) and excluded from the picker (`mappable_indicators`) — never choropleth a
+  total. Neutral sequential palette (Blues), no diverging good/bad.
+- Leaflet from cdnjs (SRI-pinned), no build step. gva-per-head verified: City of London
+  £7.9M/head is the high-outlier tell. Tier toggle, time slider, click-to-detail and the
+  comparison tool are deliberately NOT yet built (later sessions per the brief sequence).
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are

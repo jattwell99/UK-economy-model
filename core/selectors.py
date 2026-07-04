@@ -141,3 +141,96 @@ def series_payload(place, indicator):
         "coverage": cov[0] if cov else None,
         "descriptor": INDICATOR_DESCRIPTORS.get(indicator.code),
     }
+
+
+# ---------------------------------------------------------------------------
+# Choropleth map (docs/map_timeslider_brief.md)
+# ---------------------------------------------------------------------------
+
+class ChoroplethError(Exception):
+    """Bad choropleth request the view turns into a 4xx (unknown indicator / a total)."""
+
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+def mappable_indicators(tier=PlaceTier.LAD):
+    """Indicators offerable in the colour picker: NON-additive (never choropleth a
+    total, §8.2) and actually observed at this tier."""
+    return [
+        {"code": i.code, "name": i.name, "unit": i.unit}
+        for i in Indicator.objects.filter(
+            is_additive=False, placeobservation__place__tier=tier,
+        ).distinct().order_by("domain__code", "code")
+    ]
+
+
+def _resolve_period(qs, period):
+    """Narrow a queryset to a single period and return (qs, resolved_label).
+
+    period = 'YYYY-MM' (monthly), 'YYYY' (that year), or None (latest available).
+    """
+    if period:
+        parts = period.split("-")
+        qs = qs.filter(period_start__year=int(parts[0]))
+        if len(parts) > 1:
+            qs = qs.filter(period_start__month=int(parts[1]))
+        return qs, period
+    latest = qs.order_by("-period_start").values_list("period_start", flat=True).first()
+    if latest is None:
+        return qs.none(), None
+    return qs.filter(period_start__year=latest.year), str(latest.year)
+
+
+def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):
+    """Per-place values for a choropleth: latest vintage for the chosen period.
+
+    Honesty (brief §8): additive totals are refused (never choropleth a total); the
+    no_data list is EVERY in-tier place lacking a value this period — that folds in
+    both nation-level absence (England-only over W/S/N) and within-coverage holes
+    (English LADs where HPI/LE don't reach). Missing must look missing, not zero.
+    """
+    try:
+        indicator = Indicator.objects.get(code=indicator_code)
+    except Indicator.DoesNotExist:
+        raise ChoroplethError(f"Unknown indicator {indicator_code!r}.", status=404)
+    if indicator.is_additive:
+        raise ChoroplethError(
+            f"{indicator_code!r} is an additive total — a choropleth of a total is "
+            f"misleading (see §8.2). Use its per-head / rate equivalent.", status=400)
+
+    qs, resolved = _resolve_period(
+        PlaceObservation.objects.filter(indicator=indicator, place__tier=tier), period)
+
+    # One value per place: newest period_start within the window, then newest vintage.
+    # (order by place_id, not the "place" FK, which would expand to Place.Meta.ordering
+    # and break DISTINCT ON.)
+    rows = (qs.select_related("place")
+              .order_by("place_id", "-period_start", "-vintage")
+              .distinct("place_id"))
+    values = {o.place.gss_code: float(o.value) for o in rows}
+
+    # The map's universe = every place in this tier (matches the geometry layer).
+    universe = set(Place.objects.filter(tier=tier).values_list("gss_code", flat=True))
+    no_data = sorted(universe - set(values))
+
+    nums = list(values.values())
+    scale = {"min": min(nums), "max": max(nums)} if nums else {"min": None, "max": None}
+    cov = PARTIAL_COVERAGE.get(indicator.code)
+    coverage = {
+        "nations": sorted(cov[1]) if cov else None,   # null = UK-wide
+        "note": cov[0] if cov else None,
+    }
+    return {
+        "indicator": indicator.code,
+        "tier": tier,
+        "period": resolved,
+        "values": values,
+        "unit": indicator.unit,
+        "value_type": indicator.value_type,
+        "is_additive": indicator.is_additive,
+        "scale": scale,
+        "coverage": coverage,
+        "no_data": no_data,
+    }

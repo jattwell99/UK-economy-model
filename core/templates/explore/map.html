@@ -1,0 +1,146 @@
+{% extends "explore/base.html" %}
+{% load static %}
+
+{% block title %}Map — UK place explorer{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
+        integrity="sha512-h9FcoyWjHcOcmEVkxOfTLnmZFWIH0iZhZT1H2TbOq55xssQGEJHEaIm+PgoUaZbRvQTNTluNOEfb1ZRy6D3BOw=="
+        crossorigin="anonymous" referrerpolicy="no-referrer">
+  <style>
+    .map-controls { display: flex; align-items: center; gap: 12px; margin: 0 0 12px; flex-wrap: wrap; }
+    .map-controls label { font-size: 14px; color: var(--muted); }
+    .map-controls select { padding: 7px 10px; font-size: 14px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    #map { height: 640px; border: 1px solid var(--line); border-radius: 8px; }
+    .map-note { color: var(--muted); font-size: 12.5px; margin: 8px 0 0; }
+    .legend { background: #fff; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;
+      font-size: 12px; line-height: 1.5; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .legend .row { display: flex; align-items: center; gap: 6px; }
+    .legend i { width: 16px; height: 12px; display: inline-block; border: 1px solid rgba(0,0,0,.15); }
+    .legend .title { font-weight: 600; margin-bottom: 4px; }
+    .legend .nodata i { background: #9e9e9e; }
+    .leaflet-tooltip.region { font: 12px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .leaflet-tooltip.region b { font-size: 13px; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <h2>Map</h2>
+  <p class="meta">Choropleth by local authority district. Colour encodes a normalised
+    indicator (rates and per-head only — a map of a total would mislead).</p>
+
+  <div class="map-controls">
+    <label for="indicator">Indicator</label>
+    <select id="indicator">
+      {% for ind in indicators %}
+        <option value="{{ ind.code }}"{% if ind.code == 'gva-per-head' %} selected{% endif %}>{{ ind.name }}</option>
+      {% endfor %}
+    </select>
+    <span id="period-label" class="map-note"></span>
+  </div>
+
+  <div id="map"></div>
+  <p class="map-note" id="coverage-note"></p>
+{% endblock %}
+
+{% block scripts %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
+          integrity="sha512-puJW3E/qXDqYp9IfhAI54BJEaWIfloJ7JWs7OeD5i6ruC9JZL1gERT1wjtwXFlh7CjE7ZJ+/vcRZRkIYIb6p4g=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script>
+  (function () {
+    var GEO_URL = "{% static 'geo/lad.geojson' %}";
+    var API = "{% url 'explore:choropleth_api' %}";
+    // Neutral sequential palette (ColorBrewer Blues) — NOT diverging good/bad (§9).
+    var RAMP = ["#eff3ff", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd", "#08519c"];
+    var NO_DATA = "#9e9e9e";   // distinct grey — NEVER the pale light end (§8.1).
+
+    var map = L.map("map", { minZoom: 5, maxZoom: 10 }).setView([54.6, -3.2], 6);
+    var geo = null, layer = null, current = null;
+    var picker = document.getElementById("indicator");
+
+    function classify(v, scale) {
+      if (scale.min === null || scale.max === scale.min) return RAMP[RAMP.length - 1];
+      var t = (v - scale.min) / (scale.max - scale.min);   // 0..1 linear
+      var i = Math.min(RAMP.length - 1, Math.floor(t * RAMP.length));
+      return RAMP[i];
+    }
+
+    function styleFor(code) {
+      var v = current.values[code];
+      var has = v !== undefined;
+      return {
+        fillColor: has ? classify(v, current.scale) : NO_DATA,
+        fillOpacity: has ? 0.85 : 0.55,
+        color: "#ffffff", weight: 0.6,
+      };
+    }
+
+    function tooltip(feature) {
+      var code = feature.properties.gss_code, name = feature.properties.name;
+      var v = current.values[code];
+      if (v === undefined) {
+        return "<b>" + name + "</b><br>no data" +
+               (current.period ? " (" + current.period + ")" : "");
+      }
+      var val = v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+      return "<b>" + name + "</b><br>" + val + " " + current.unit +
+             (current.period ? "<br>" + current.period : "");
+    }
+
+    function draw() {
+      if (layer) layer.remove();
+      layer = L.geoJSON(geo, {
+        style: function (f) { return styleFor(f.properties.gss_code); },
+        onEachFeature: function (f, lyr) {
+          lyr.bindTooltip(tooltip(f), { className: "region", sticky: true });
+        },
+      }).addTo(map);
+      try { map.fitBounds(layer.getBounds(), { padding: [10, 10] }); } catch (e) {}
+    }
+
+    var legend = L.control({ position: "bottomright" });
+    legend.onAdd = function () {
+      var div = L.DomUtil.create("div", "legend");
+      var s = current.scale, html = "<div class='title'>" + current.unit + "</div>";
+      if (s.min !== null && s.max !== s.min) {
+        for (var i = 0; i < RAMP.length; i++) {
+          var lo = s.min + (s.max - s.min) * (i / RAMP.length);
+          var hi = s.min + (s.max - s.min) * ((i + 1) / RAMP.length);
+          html += "<div class='row'><i style='background:" + RAMP[i] + "'></i>" +
+                  Math.round(lo).toLocaleString() + "–" + Math.round(hi).toLocaleString() + "</div>";
+        }
+      }
+      html += "<div class='row nodata'><i></i>no data</div>";
+      div.innerHTML = html;
+      return div;
+    };
+    var legendAdded = false;
+
+    function load(code) {
+      fetch(API + "?indicator=" + encodeURIComponent(code) + "&tier=LAD")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.error) { alert(data.error); return; }
+          current = data;
+          document.getElementById("period-label").textContent =
+            data.period ? "Period: " + data.period : "";
+          document.getElementById("coverage-note").textContent =
+            data.coverage.note
+              ? data.coverage.note + " — regions outside coverage are shown as “no data”, not zero."
+              : "Grey = no data for this period (never the light end of the scale).";
+          draw();
+          if (legendAdded) legend.remove();
+          legend.addTo(map); legendAdded = true;
+        });
+    }
+
+    fetch(GEO_URL).then(function (r) { return r.json(); }).then(function (g) {
+      geo = g;
+      load(picker.value);
+    });
+    picker.addEventListener("change", function () { load(picker.value); });
+  })();
+  </script>
+{% endblock %}

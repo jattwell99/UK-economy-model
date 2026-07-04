@@ -12,4 +12,7 @@ urlpatterns = [
     # Versioned detail for GSS codes shared by two boundary sets (a few Scottish WPCs).
     path("places/<str:gss_code>/v/<str:valid_from>/", views.place_detail,
          name="place_detail_versioned"),
+    # Choropleth map + its JSON endpoint (docs/map_timeslider_brief.md).
+    path("map/", views.map_view, name="map"),
+    path("api/choropleth/", views.choropleth_api, name="choropleth_api"),
 ]

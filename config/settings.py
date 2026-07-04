@@ -142,6 +142,8 @@ USE_TZ = True
 # DEBUG keep Django's default so local dev / tests need no collectstatic manifest.
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Project-level static (map GeoJSON lives here; served by WhiteNoise in prod).
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 if not DEBUG:
     STORAGES = {

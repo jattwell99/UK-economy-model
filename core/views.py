@@ -5,13 +5,17 @@ Two server-rendered routes over LAD place data. No rankings, no verdicts; every
 chart carries its provenance. The vintage-safe series query lives in selectors.
 """
 
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import render
 
+from .models import PlaceTier
 from .selectors import (
+    ChoroplethError,
     ambiguous_gss_codes,
+    choropleth_data,
     coverage_notes,
     indicators_for_place,
+    mappable_indicators,
     places_with_observations,
     resolve_place,
     series_payload,
@@ -50,3 +54,25 @@ def place_detail(request, gss_code, valid_from=None):
             "coverage_notes": coverage_notes(place),
         },
     )
+
+
+def map_view(request):
+    """Base choropleth map page (Leaflet from CDN + static LAD GeoJSON)."""
+    return render(
+        request,
+        "explore/map.html",
+        {"indicators": mappable_indicators(PlaceTier.LAD)},
+    )
+
+
+def choropleth_api(request):
+    """JSON per-place values for a choropleth (docs/map_timeslider_brief.md §4)."""
+    indicator = request.GET.get("indicator")
+    if not indicator:
+        return JsonResponse({"error": "indicator is required."}, status=400)
+    tier = request.GET.get("tier", PlaceTier.LAD)
+    period = request.GET.get("period") or None
+    try:
+        return JsonResponse(choropleth_data(indicator, tier=tier, period=period))
+    except ChoroplethError as exc:
+        return JsonResponse({"error": str(exc)}, status=exc.status)
