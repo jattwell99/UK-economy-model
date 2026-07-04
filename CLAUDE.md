@@ -324,6 +324,19 @@ session per the build order.
   verify after a deploy. The container can reach gov.uk / ONS / Nomis but NOT
   parliament.uk (WAF 403) and NOT the Railway DB ports (egress blocked), which is why
   election files are bundled in `seed_data/` and loaded by `bootstrap_seed` on deploy.
+- **`docker-entrypoint.sh` fails LOUDLY on a broken seed (no `|| true`).**
+  `bootstrap_seed` swallows *per-dataset* failures itself (flaky source → log + retry
+  next deploy, still exits 0), so a non-zero exit means the whole seed crashed/was
+  killed — the entrypoint then prints `FATAL:` and refuses to start, so a bad deploy
+  stays out and the last healthy one keeps serving *complete* data. **Most likely FATAL
+  trigger = DISK-FULL during seed** (append-only vintages grow the Postgres volume every
+  refresh; ~79% as of the 2025 GVA refresh) — i.e. this is what makes the storage
+  ceiling degrade safely. On a FATAL deploy, check volume usage first. Storage headroom
+  (upgrade vs archive old vintages) is a tracked open decision.
+- **Deploy verification: bootstrap is synchronous and can take ~11 min** on a big
+  refresh (first-time parse of the bundled workbooks); the site shows partial data until
+  it finishes, then future deploys skip already-loaded vintages via the guards. WAIT for
+  a deploy to actually complete before declaring it verified — "pushed, polling" ≠ done.
 
 ## Confirm, don't assume
 

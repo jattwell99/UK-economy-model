@@ -97,6 +97,19 @@ exists it no-ops, so it's safe on every boot. A brand-new deploy therefore
 populates itself with no shell access. (If you host with a custom start command
 that overrides the entrypoint, include `python manage.py bootstrap_seed` in it.)
 
+**Fail-loudly on a broken seed (why the entrypoint has no `|| true`):**
+`bootstrap_seed` catches *per-dataset* failures internally — a flaky source (ONS /
+Nomis outage) is logged and retried on the next deploy, and the command still exits 0
+so one bad source never downs the site. A **non-zero exit therefore means the whole
+seed crashed or was killed mid-run**, so the entrypoint does **not** swallow it: it
+prints `FATAL: …` and exits non-zero, the deploy fails visibly, and the platform keeps
+the last healthy deploy serving *complete* data rather than cutting over to a
+half-loaded one. **The most likely trigger for this FATAL path is a DISK-FULL write
+failure during seed** — the append-only design grows the Postgres volume every refresh
+(at ~79% as of the 2025 GVA refresh), so when the disk ceiling is hit the deploy
+degrades *safely and visibly* instead of silently stranding partial data. If a deploy
+fails with the `FATAL` line, check the volume usage first.
+
 **Manual load** — to populate it yourself (same commands as local — see the
 README), run against the hosted database:
 
