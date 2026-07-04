@@ -18,21 +18,34 @@ def places_with_observations(search=None):
     qs = (
         Place.objects.filter(tier__in=EXPLORE_TIERS, observations__isnull=False)
         .distinct()
-        .order_by("name", "tier")
+        .order_by("name", "tier", "valid_from")
     )
     if search:
         qs = qs.filter(name__icontains=search)
     return qs
 
 
-def resolve_place(gss_code):
-    """Resolve a GSS code to a single Place (latest boundary version). Tier-agnostic —
-    a GSS code is unique to its tier (E14… constituency vs E08… local authority)."""
-    return (
-        Place.objects.filter(tier__in=EXPLORE_TIERS, gss_code=gss_code)
-        .order_by("-valid_from")
-        .first()
-    )
+def resolve_place(gss_code, valid_from=None):
+    """Resolve a GSS code to a single Place.
+
+    Default = the latest boundary version. A few Scottish WPC codes (e.g. S14000021)
+    exist in BOTH the 2010-review and 2023-review sets, so an optional valid_from
+    picks a specific version and keeps the older seat reachable by URL.
+    """
+    qs = Place.objects.filter(tier__in=EXPLORE_TIERS, gss_code=gss_code)
+    if valid_from is not None:
+        return qs.filter(valid_from=valid_from).first()
+    return qs.order_by("-valid_from").first()
+
+
+def ambiguous_gss_codes(places):
+    """GSS codes shared by more than one Place in `places` (need a versioned URL)."""
+    seen, dupes = set(), set()
+    for p in places:
+        if p.gss_code in seen:
+            dupes.add(p.gss_code)
+        seen.add(p.gss_code)
+    return dupes
 
 
 def indicators_for_place(place):

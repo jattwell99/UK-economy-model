@@ -4,7 +4,7 @@
 
 {% block content %}
   <h2>Places</h2>
-  <p class="meta">Local authority districts with data. {{ places|length }} shown.</p>
+  <p class="meta">Local authorities and constituencies with data. {{ places|length }} shown.</p>
 
   <form class="search" method="get" role="search">
     <input type="search" name="q" value="{{ query }}"
@@ -15,7 +15,8 @@
     <ul class="places">
       {% for place in places %}
         <li>
-          <a href="{% url 'explore:place_detail' place.gss_code %}">{{ place.name }}<span class="tier">{{ place.tier }}</span></a>
+          <a href="{% if place.needs_version %}{% url 'explore:place_detail_versioned' place.gss_code place.valid_from|date:'Y-m-d' %}{% else %}{% url 'explore:place_detail' place.gss_code %}{% endif %}">{{ place.name }}<span class="tier">{{ place.tier }}</span></a>
+          {% if place.tier == 'WPC' %}<span class="era">{{ place.valid_from|date:'Y' }}–{{ place.valid_to|date:'Y'|default:'' }}</span>{% endif %}
           <span class="code">{{ place.gss_code }}</span>
         </li>
       {% endfor %}

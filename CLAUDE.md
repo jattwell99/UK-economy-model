@@ -46,7 +46,8 @@ core/
     ingest_hpi.py    UK House Price Index (average price) by LAD, monthly (breadth)
     ingest_gdhi.py   ONS GDHI total £m + per-head £ by LAD, annual (breadth)
     ingest_nomis.py  Nomis API: claimant count, employment rate, pay, jobs density
-    ingest_elections.py   HoC Library 2024 GE results by constituency -> WPC (Phase 4a)
+    ingest_elections.py   HoC Library GE results by constituency -> WPC, 2015-2024
+                          (Phase 4a: 2024; 4b: 2015/2017/2019 on old boundaries)
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
   tests/           Early guarantees + GVA, population/per-head, HPI and elections verticals
 docs/              Spec + build plan (source of truth)
@@ -113,7 +114,32 @@ under a `civic` domain, all POINT period at the election date (2024-07-04), sour
 This is the FIRST WPC-tier data. `selectors.EXPLORE_TIERS` now covers LAD + WPC (was
 LAD-only), so a constituency renders on both the explore list (with a tier chip) and
 the detail page. Crosswalk roll-up honours the flags: majority sums, turnout/share refuse.
-Phase 4b (historic election series) is a later session — deliberately not started.
+
+Phase 4b (historic election series — 2015/2017/2019 at WPC tier, done): the same
+`ingest_elections`, extended to the HoC files for GE2015 (CBP-7186), GE2017 (CBP-7979)
+and GE2019 (CBP-8749), all bundled in `seed_data/elections/`. These three elections used
+the SAME 2010-review boundary set (650 seats), DIFFERENT from the July-2024 set, so they
+load as a SECOND versioned batch of WPC Places (valid_from 2010-05-06, valid_to
+2024-07-03) created idempotently from the file. Key correctness points:
+- Boundary versioning: results attach to the Place whose `[valid_from, valid_to]` window
+  contains the election date — an **election-date-window resolver**, NOT the old
+  "latest version wins" (which would misattribute historic results to 2024 seats).
+- Code reuse verified, not assumed: England/Wales/NI codes are disjoint across the two
+  sets, but **5 Scottish codes appear in both** (S14000021/27/45/48/51 — seats the 2023
+  review left unchanged). They coexist as distinct Place rows via the `(gss_code,
+  valid_from)` unique constraint. To keep the older seats reachable, `resolve_place`
+  takes an optional `valid_from`, there's a `places/<gss>/v/<valid_from>/` route, and the
+  explore list links the ambiguous ones (only) to the versioned URL (`ambiguous_gss_codes`).
+- Winner-vote location adapts per file: party columns are read from each header (UKIP in
+  2015/2017, BRX in 2019, RUK in 2024); winner = named `First party` column → else
+  `Of which other winner` → else (2015, which lacks that column) Majority + runner-up
+  (`Second party`) votes. turnout basis is identical every year — all files carry
+  "Invalid votes", so `(valid+invalid)/electorate` throughout (no fallback needed).
+- Honest separation (no stitching): the 3 historic elections form a trend on the
+  OLD-boundary Place; the 2024 seat keeps its single dot. Cross-boundary vote
+  apportionment is deliberately out of scope. WPC explore entries carry an era hint
+  (e.g. "2010–2024" vs "2024–"). Old-boundary WPC↔LAD crosswalks are not built (the
+  crosswalk remains 2024-only). Phase 4b complete: 4 elections, 7,800 civic obs.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are

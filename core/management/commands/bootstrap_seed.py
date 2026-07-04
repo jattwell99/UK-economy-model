@@ -29,12 +29,24 @@ GDHI_DIR = Path(settings.BASE_DIR) / "seed_data" / "gdhi"
 POP_FILE = GVA_DIR / "populationestimatesbylocalauthority.xlsx"
 POP_VINTAGE = "2020-06-mye"
 HPI_EDITION = os.environ.get("HPI_EDITION", "2026-04")
-ELECTIONS_FILE = (Path(settings.BASE_DIR) / "seed_data" / "elections"
-                  / "HoC-GE2024-results-by-constituency.csv")
+ELECTIONS_DIR = Path(settings.BASE_DIR) / "seed_data" / "elections"
+ELECTIONS_FILE = ELECTIONS_DIR / "HoC-GE2024-results-by-constituency.csv"
+# Historic general elections on the 2010-review (old) boundary set.
+OLD_WPC_FROM = "2010-05-06"   # first used at the 2010 GE …
+OLD_WPC_TO = "2024-07-03"     # … superseded the day before the 2023-review set.
+HISTORIC_ELECTIONS = [
+    ("GE2019", "2019-12-12", "HoC-GE2019-results-by-constituency.csv"),
+    ("GE2017", "2017-06-08", "HoC-GE2017-results-by-constituency.csv"),
+    ("GE2015", "2015-05-07", "HoC-GE2015-results-by-constituency.csv"),
+]
 
 
 def _has_obs(code):
     return PlaceObservation.objects.filter(indicator__code=code).exists()
+
+
+def _has_obs_vintage(code, vintage):
+    return PlaceObservation.objects.filter(indicator__code=code, vintage=vintage).exists()
 
 
 class Command(BaseCommand):
@@ -98,12 +110,23 @@ class Command(BaseCommand):
                 lambda c=code: call_command("ingest_nomis", only=c),
             )
         # Civic — 2024 general election at the WPC tier (bundled HoC CSV, so the
-        # deploy doesn't need parliament.uk egress).
+        # deploy doesn't need parliament.uk egress). New (2023-review) boundaries.
         self._ensure(
-            "elections (2024 GE)", _has_obs("turnout"),
+            "elections (2024 GE)", _has_obs_vintage("turnout", "GE2024"),
             lambda: ELECTIONS_FILE.exists() and call_command(
                 "ingest_elections", path=str(ELECTIONS_FILE)),
         )
+        # Civic — historic GEs (2019/2017/2015) on the OLD (2010-review) boundary set.
+        # Each creates the old-boundary WPC Places (idempotent) and attaches results to
+        # them by election-date window; the 2024 seats are untouched.
+        for vintage, edate, fname in HISTORIC_ELECTIONS:
+            path = ELECTIONS_DIR / fname
+            self._ensure(
+                f"elections ({vintage})", _has_obs_vintage("turnout", vintage),
+                lambda p=path, v=vintage, d=edate: p.exists() and call_command(
+                    "ingest_elections", path=str(p), election_date=d, vintage=v,
+                    boundary_valid_from=OLD_WPC_FROM, boundary_valid_to=OLD_WPC_TO),
+            )
 
         # Admin user — always ensured when a password is provided, independent of any
         # data guard (idempotent create-or-update).
