@@ -1,0 +1,214 @@
+{% extends "explore/base.html" %}
+
+{% block title %}Compare — UK place explorer{% endblock %}
+
+{% block extra_head %}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+          integrity="sha512-CQBWl4fJHWbryGE+Pc7UAxWMUMNMWzWxF4SQo9CgkJIN1kx6djDQZjh3Y8SZ1d+6I+1zze6Z7kHXO7q3UyZAWw=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <style>
+    .cmp-controls { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; flex-wrap: wrap; }
+    .cmp-controls label { font-size: 14px; color: var(--muted); }
+    .cmp-controls select, .cmp-search input { padding: 7px 10px; font-size: 14px;
+      border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    .cmp-search { position: relative; }
+    .cmp-search input { width: 260px; }
+    .cmp-results { position: absolute; z-index: 10; background: #fff; border: 1px solid var(--line);
+      border-radius: 6px; margin-top: 2px; width: 320px; max-height: 260px; overflow-y: auto;
+      box-shadow: 0 2px 8px rgba(0,0,0,.1); display: none; }
+    .cmp-results li { list-style: none; padding: 7px 10px; cursor: pointer; font-size: 14px; }
+    .cmp-results li:hover { background: var(--bg); }
+    .cmp-results .era { color: var(--muted); font-size: 12px; margin-left: 6px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; }
+    .chip { display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid var(--line);
+      border-radius: 999px; padding: 4px 6px 4px 12px; font-size: 13px; }
+    .chip .swatch { width: 10px; height: 10px; border-radius: 50%; }
+    .chip button { border: none; background: none; cursor: pointer; color: var(--muted); font-size: 15px; line-height: 1; }
+    .warn { background: #fff8e1; border: 1px solid #f0e0a8; color: #6b5900; border-radius: 6px;
+      padding: 10px 12px; font-size: 13px; margin: 0 0 14px; }
+    .notes { color: var(--muted); font-size: 12.5px; margin: 10px 0 0; }
+    #cmp-chart-wrap { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+    .prov { color: var(--muted); font-size: 11.5px; margin: 10px 0 0; border-top: 1px dashed var(--line); padding-top: 8px; }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <h2>Compare places over time</h2>
+  <p class="meta">Pick a tier, an indicator, and two or more places. Lines share one time
+    axis; gaps break the line (never interpolated). Same tier and one boundary era only;
+    only comparable (per-head / rate) indicators — a total across differently-sized places
+    isn’t a fair comparison. No ranking or “best/worst” colouring.</p>
+
+  <div class="cmp-controls">
+    <label for="tier">Tier</label>
+    <select id="tier">
+      <option value="LAD" selected>Local authority districts</option>
+      <option value="WPC">Constituencies</option>
+    </select>
+    <label for="indicator">Indicator</label>
+    <select id="indicator"></select>
+    <span class="cmp-search">
+      <input type="search" id="place-search" placeholder="Add a place by name…" autocomplete="off">
+      <ul class="cmp-results" id="place-results"></ul>
+    </span>
+  </div>
+
+  <div class="chips" id="chips"></div>
+  <div class="warn" id="warn" style="display:none"></div>
+
+  <div id="cmp-chart-wrap">
+    <canvas id="cmp-chart" height="150" aria-label="Comparison trend chart"></canvas>
+    <p class="prov" id="cmp-prov"></p>
+  </div>
+  <p class="notes" id="cmp-notes"></p>
+  <p class="notes">Tip: selecting places on the map (brush-to-select) is a possible later
+    addition — for now use the search above.</p>
+{% endblock %}
+
+{% block scripts %}
+  {{ indicators_lad|json_script:"inds-lad-c" }}
+  {{ indicators_wpc|json_script:"inds-wpc-c" }}
+  <script>
+  (function () {
+    var API = "{% url 'explore:compare_api' %}";
+    var SEARCH = "{% url 'explore:compare_places_api' %}";
+    var INDICATORS = {
+      LAD: JSON.parse(document.getElementById("inds-lad-c").textContent),
+      WPC: JSON.parse(document.getElementById("inds-wpc-c").textContent),
+    };
+    // Neutral CATEGORICAL palette — assigned by selection order, never by value/rank.
+    var COLORS = ["#4e79a7", "#59a14f", "#9c755f", "#af7aa1", "#edc948", "#76b7b2",
+                  "#ff9da7", "#bab0ac"];
+
+    var tierSel = document.getElementById("tier");
+    var picker = document.getElementById("indicator");
+    var search = document.getElementById("place-search");
+    var results = document.getElementById("place-results");
+    var chipsEl = document.getElementById("chips");
+    var warnEl = document.getElementById("warn");
+    var notesEl = document.getElementById("cmp-notes");
+    var provEl = document.getElementById("cmp-prov");
+    var selected = [];   // {gss, valid_from, name, token, color}
+    var chart = null, searchTimer = null;
+
+    function tier() { return tierSel.value; }
+    function token(p) { return p.valid_from ? p.gss + "@" + p.valid_from : p.gss; }
+
+    function rebuildPicker() {
+      var list = INDICATORS[tier()] || [];
+      picker.innerHTML = "";
+      list.forEach(function (ind) {
+        var o = document.createElement("option");
+        o.value = ind.code; o.textContent = ind.name;
+        picker.appendChild(o);
+      });
+    }
+
+    function renderChips() {
+      chipsEl.innerHTML = "";
+      selected.forEach(function (p, i) {
+        var c = document.createElement("span"); c.className = "chip";
+        c.innerHTML = "<span class='swatch' style='background:" + p.color + "'></span>" +
+          p.name + " <button aria-label='Remove'>×</button>";
+        c.querySelector("button").addEventListener("click", function () {
+          selected.splice(i, 1); renderChips(); update();
+        });
+        chipsEl.appendChild(c);
+      });
+    }
+
+    function warn(msg) {
+      warnEl.style.display = msg ? "" : "none";
+      warnEl.textContent = msg || "";
+    }
+
+    function doSearch() {
+      var q = search.value.trim();
+      if (!q) { results.style.display = "none"; return; }
+      fetch(SEARCH + "?tier=" + tier() + "&q=" + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          results.innerHTML = "";
+          (d.places || []).forEach(function (pl) {
+            if (selected.some(function (s) { return token(s) === token(pl); })) return;
+            var li = document.createElement("li");
+            li.innerHTML = pl.name + "<span class='era'>" +
+              (tier() === "WPC" ? pl.era : pl.gss) + "</span>";
+            li.addEventListener("click", function () {
+              pl.color = COLORS[selected.length % COLORS.length];
+              selected.push(pl);
+              search.value = ""; results.style.display = "none";
+              renderChips(); update();
+            });
+            results.appendChild(li);
+          });
+          results.style.display = d.places && d.places.length ? "" : "none";
+        });
+    }
+
+    function update() {
+      if (selected.length < 2) {
+        warn(selected.length === 1 ? "Add at least one more place to compare." : "");
+        if (chart) { chart.destroy(); chart = null; }
+        provEl.textContent = ""; notesEl.textContent = ""; return;
+      }
+      var qs = "?indicator=" + encodeURIComponent(picker.value) + "&tier=" + tier() +
+        selected.map(function (p) { return "&place=" + encodeURIComponent(token(p)); }).join("");
+      fetch(API + qs).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          if (!res.ok) { warn(res.d.error || "Can’t compare these selections."); return; }
+          warn("");
+          draw(res.d);
+        });
+    }
+
+    function draw(data) {
+      var byGss = {};
+      selected.forEach(function (p) { byGss[token(p)] = p.color; });
+      var datasets = data.series.map(function (s) {
+        var tk = s.valid_from ? s.gss + "@" + s.valid_from : s.gss;
+        return {
+          label: s.place_name, data: s.values,
+          borderColor: byGss[tk] || "#666", backgroundColor: byGss[tk] || "#666",
+          borderWidth: 1.6, pointRadius: 2, tension: 0.12, spanGaps: false,  // gaps BREAK the line
+        };
+      });
+      if (chart) chart.destroy();
+      chart = new Chart(document.getElementById("cmp-chart"), {
+        type: "line",
+        data: { labels: data.periods, datasets: datasets },
+        options: {
+          responsive: true, interaction: { intersect: false, mode: "index" },
+          plugins: { legend: { position: "bottom" } },
+          scales: {
+            x: { title: { display: true, text: "Period" }, grid: { display: false } },
+            y: { title: { display: true, text: data.unit }, beginAtZero: false },
+          },
+        },
+      });
+      provEl.textContent = "Source: " + data.provenance.map(function (p) {
+        return p.source + " · vintage " + p.vintage; }).join("  |  ");
+      var msgs = (data.coverage_notes || []).map(function (n) {
+        return n.place + " — excluded (" + n.note + ")"; });
+      notesEl.textContent = msgs.length
+        ? "Not comparable here: " + msgs.join("; ") : "";
+    }
+
+    function resetTier() {
+      selected = []; renderChips(); rebuildPicker(); warn("");
+      if (chart) { chart.destroy(); chart = null; }
+      provEl.textContent = ""; notesEl.textContent = "";
+    }
+
+    tierSel.addEventListener("change", resetTier);
+    picker.addEventListener("change", update);
+    search.addEventListener("input", function () {
+      clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 200);
+    });
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest(".cmp-search")) results.style.display = "none";
+    });
+    rebuildPicker();
+  })();
+  </script>
+{% endblock %}

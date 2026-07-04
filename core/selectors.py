@@ -9,7 +9,7 @@ ONE series per indicator = the latest vintage per period. Never all vintages.
 from collections import Counter
 from datetime import date
 
-from .models import Indicator, Place, PlaceObservation, PlaceTier
+from .models import Indicator, PeriodType, Place, PlaceObservation, PlaceTier
 
 
 # Tiers that carry explorable observations (LAD economy/labour/housing, WPC civic).
@@ -304,4 +304,132 @@ def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):
         "breaks": breaks,   # quantile band edges; band i covers [breaks[i], breaks[i+1])
         "coverage": coverage,
         "no_data": no_data,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Comparison-over-time tool — CONSERVATIVE path (docs/comparison_tool_scoping_brief.md)
+# ---------------------------------------------------------------------------
+
+class ComparisonError(Exception):
+    """A comparison request that breaks a structural rule (the view returns 4xx)."""
+
+    def __init__(self, message, status=400):
+        super().__init__(message)
+        self.status = status
+
+
+def comparison_indicators(tier=PlaceTier.LAD):
+    """Indicators offerable for comparison: same rule as the map picker — NON-additive
+    (totals aren't fairly comparable across differently-sized places) and observed at
+    this tier."""
+    return mappable_indicators(tier)
+
+
+def search_places_for_compare(tier, search=None, limit=25):
+    """Places of ONE tier with observations, for the standalone selection picker.
+
+    Each carries valid_from so WPC selections are version-explicit (a comparison set
+    is a single boundary era; the picker sends gss@valid_from)."""
+    qs = places_with_observations(search).filter(tier=tier)
+    return [
+        {
+            "gss": p.gss_code,
+            "name": p.name,
+            "valid_from": p.valid_from.isoformat(),
+            "tier": p.tier,
+            "era": "%d–%s" % (p.valid_from.year, p.valid_to.year if p.valid_to else ""),
+        }
+        for p in qs[:limit]
+    ]
+
+
+def comparison_series(indicator_code, tier, selections):
+    """Assemble N places' trends for ONE indicator onto a shared, honestly-aligned axis.
+
+    selections = [(gss_code, valid_from|None), ...]. Reuses latest_series per place
+    (never bends single-place series_payload). Structural rules (the §2 "comparable"
+    definition) are enforced here, not in the UI alone:
+      - non-additive only (reuse the additive guard) — a total on N sized places misleads;
+      - single tier (LAD or WPC, not mixed);
+      - single boundary era (no 2010-review + 2024 seats on one axis — different geographies).
+    Honesty: a place outside the indicator's nation coverage CANNOT join — it's dropped
+    with the coverage reason (never a fake zero). Gaps are null in the aligned values so
+    the line BREAKS across a missing period rather than interpolating.
+    """
+    try:
+        indicator = Indicator.objects.get(code=indicator_code)
+    except Indicator.DoesNotExist:
+        raise ComparisonError(f"Unknown indicator {indicator_code!r}.", status=404)
+    if indicator.is_additive:
+        raise ComparisonError(
+            f"{indicator_code!r} is an additive total — totals aren't fairly comparable "
+            f"across differently-sized places. Pick a per-head / rate indicator.", status=400)
+    if tier not in (PlaceTier.LAD, PlaceTier.WPC):
+        raise ComparisonError(f"Unknown tier {tier!r}.", status=400)
+    if len(selections) < 2:
+        raise ComparisonError("Pick at least two places to compare.", status=400)
+
+    resolved = []
+    for gss, vf in selections:
+        p = resolve_place(gss, valid_from=vf)
+        if p is None:
+            raise ComparisonError(f"No place for {gss!r}"
+                                  + (f" at {vf}" if vf else "") + ".", status=404)
+        resolved.append(p)
+
+    if any(p.tier != tier for p in resolved):
+        raise ComparisonError(
+            "A comparison is a single tier (LAD or WPC), not mixed.", status=400)
+    eras = {p.valid_from for p in resolved}
+    if len(eras) > 1:
+        raise ComparisonError(
+            "A comparison stays within one boundary era — mixing the 2010-review and "
+            "2024 constituency sets would put different geographies on one axis.", status=400)
+
+    cov = PARTIAL_COVERAGE.get(indicator.code)
+    included, coverage_notes, period_dates = [], [], set()
+    for p in resolved:
+        if cov and p.nation not in cov[1]:
+            coverage_notes.append({"place": p.name, "gss": p.gss_code, "note": cov[0]})
+            continue
+        rows = list(latest_series(p, indicator))
+        pts = {o.period_start: float(o.value) for o in rows}
+        period_dates.update(pts)
+        included.append((p, pts, rows))
+
+    period_dates = sorted(period_dates)
+    ptype = next((rows[0].period_type for _p, _pts, rows in included if rows), None)
+
+    def _label(d):
+        return "%d-%02d" % (d.year, d.month) if ptype == PeriodType.MONTH else str(d.year)
+
+    periods = [_label(d) for d in period_dates]
+
+    series, prov_seen, provenance = [], set(), []
+    for p, pts, rows in included:
+        series.append({
+            "place_name": p.name,
+            "gss": p.gss_code,
+            "valid_from": p.valid_from.isoformat(),
+            "values": [pts.get(d) for d in period_dates],   # None => gap breaks the line
+        })
+        for o in rows:
+            key = (o.source.name, o.vintage)
+            if key not in prov_seen:
+                prov_seen.add(key)
+                provenance.append({"source": o.source.name, "vintage": o.vintage})
+
+    return {
+        "indicator": indicator.code,
+        "indicator_name": indicator.name,
+        "unit": indicator.unit,
+        "value_type": indicator.value_type,
+        "is_additive": indicator.is_additive,
+        "tier": tier,
+        "boundary": next(iter(eras)).isoformat() if eras else None,
+        "periods": periods,
+        "series": series,
+        "coverage_notes": coverage_notes,
+        "provenance": provenance,
     }

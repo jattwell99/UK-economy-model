@@ -37,8 +37,8 @@ core/
   aggregation.py   Crosswalk roll-up gated by Indicator.is_additive (latest vintage per period)
   selectors.py     Read-side queries for the explore surface (latest-vintage-per-period series)
   views.py/urls.py Explore surface: /places/ list + /places/<gss_code>/ detail;
-                   /map/ choropleth + /api/choropleth/ JSON endpoint
-  templates/explore/  Server-rendered list + detail + map (Chart.js / Leaflet from cdnjs)
+                   /map/ choropleth + /api/choropleth/; /compare/ + /api/compare/
+  templates/explore/  Server-rendered list + detail + map + compare (Chart.js / Leaflet)
   static/geo/      Bundled generalised boundary GeoJSON for the map (lad.geojson)
   management/commands/
     seed_v1.py       Dimensions, SIC tree, geography (LAD Dec-2019 + WPC), crosswalk
@@ -251,9 +251,33 @@ Map — choropleth (docs/map_timeslider_brief.md), steps 1-3 done (LAD base map)
   as `boundary`), so WPC uses `/places/<gss>/v/<valid_from>/` — the 5 colliding Scottish
   codes open the OLD seat on a historic period and the NEW seat on 2024 (never newest-wins
   guessing); LAD uses the plain `/places/<gss>/`. The map feature (steps 1-7) is complete.
-- The multi-region comparison-over-time tool remains a SEPARATE scoping pass (brief §12):
-  "comparable" is a design decision (same tier + matching vintage, normalised only, and/or
-  a peer-grouping that edges toward classification) — scope before building.
+Comparison-over-time tool (docs/comparison_tool_scoping_brief.md, CONSERVATIVE / Path A,
+done): pick a tier, a normalised indicator, and 2-N places → N trend lines on one shared,
+honestly-aligned time axis (`/compare/`, Chart.js — reuses the detail page's charting
+idiom, not the map). Standalone list/search picker; map-linked brush-to-select is noted as
+a possible later add, NOT built. Endpoints: `/api/compare/` and `/api/compare/places/`.
+- New multi-place assembler `selectors.comparison_series(indicator, tier, selections)` —
+  calls the `latest_series` primitive N times (does NOT bend single-place series_payload).
+  Returns {indicator, unit, is_additive, tier, boundary, periods:[…], series:[{place_name,
+  gss, valid_from, values:[…]}], coverage_notes, provenance}. `values` is aligned to the
+  shared `periods` with `null` for gaps → the line BREAKS across a missing period (Chart.js
+  spanGaps:false), never interpolates.
+- Structural "comparable" rules enforced server-side (`ComparisonError` → 4xx), not just in
+  the UI: NON-additive only (reuse the additive guard — a total across differently-sized
+  places misleads); SINGLE tier (LAD or WPC, not mixed); SINGLE boundary era (a set can't
+  span the 2024 WPC change — no stitching different geometries onto one axis; WPC selections
+  carry valid_from as `gss@YYYY-MM-DD`, standardising on the map's version-explicit
+  convention). A place outside the indicator's nation coverage (PARTIAL_COVERAGE) CANNOT
+  join — it's dropped with the coverage reason, never a fake zero.
+- Neutral CATEGORICAL series colours assigned by selection order — NO best/worst ordering,
+  NO rank colouring, NO composite score (holds the no-rankings line). Provenance shown.
+- Peer / "similar places" grouping is DEFERRED (edges toward classification) — a later
+  scoping pass, not built here.
+
+Organisation cluster models (Organisation, OrganisationIdentifier,
+OrganisationSite, OrganisationClassification, OrganisationObservation) are
+specified in the spec but deliberately not yet added — they belong to a later
+session per the build order.
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are

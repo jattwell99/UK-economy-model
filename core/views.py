@@ -9,15 +9,21 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import render
 
 from .models import PlaceTier
+from datetime import datetime
+
 from .selectors import (
     ChoroplethError,
+    ComparisonError,
     ambiguous_gss_codes,
     choropleth_data,
+    comparison_indicators,
+    comparison_series,
     coverage_notes,
     indicators_for_place,
     mappable_indicators,
     places_with_observations,
     resolve_place,
+    search_places_for_compare,
     series_payload,
 )
 
@@ -78,4 +84,48 @@ def choropleth_api(request):
     try:
         return JsonResponse(choropleth_data(indicator, tier=tier, period=period))
     except ChoroplethError as exc:
+        return JsonResponse({"error": str(exc)}, status=exc.status)
+
+
+def compare_view(request):
+    """Comparison-over-time page: pick a tier, indicator and 2-N places (standalone
+    list/search picker), draw N trend lines on a shared axis."""
+    return render(
+        request,
+        "explore/compare.html",
+        {
+            "indicators_lad": comparison_indicators(PlaceTier.LAD),
+            "indicators_wpc": comparison_indicators(PlaceTier.WPC),
+        },
+    )
+
+
+def compare_places_api(request):
+    """Search places of one tier for the comparison picker."""
+    tier = request.GET.get("tier", PlaceTier.LAD)
+    query = request.GET.get("q", "").strip() or None
+    return JsonResponse({"places": search_places_for_compare(tier, query)})
+
+
+def _parse_selection(token):
+    """'gss' or 'gss@YYYY-MM-DD' -> (gss, date|None). WPC carries the boundary era."""
+    if "@" in token:
+        gss, vf = token.split("@", 1)
+        return gss, datetime.strptime(vf, "%Y-%m-%d").date()
+    return token, None
+
+
+def compare_api(request):
+    """JSON multi-place series for one indicator (docs/comparison_tool_scoping_brief.md)."""
+    indicator = request.GET.get("indicator")
+    tier = request.GET.get("tier", PlaceTier.LAD)
+    if not indicator:
+        return JsonResponse({"error": "indicator is required."}, status=400)
+    try:
+        selections = [_parse_selection(t) for t in request.GET.getlist("place")]
+    except ValueError:
+        return JsonResponse({"error": "Bad place selection format."}, status=400)
+    try:
+        return JsonResponse(comparison_series(indicator, tier, selections))
+    except ComparisonError as exc:
         return JsonResponse({"error": str(exc)}, status=exc.status)
