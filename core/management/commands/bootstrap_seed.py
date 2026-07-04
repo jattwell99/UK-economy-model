@@ -63,6 +63,22 @@ def _has_obs_vintage(code, vintage):
     return PlaceObservation.objects.filter(indicator__code=code, vintage=vintage).exists()
 
 
+def _place_has_obs(gss_code, indicator_code=None):
+    """Does a specific place have observations (optionally for one indicator)?
+    Used to guard the LAD-refresh backfill: on an already-seeded DB the ingesters skip,
+    so a newly versioned-in unitary stays empty until its source is re-run once."""
+    qs = PlaceObservation.objects.filter(place__gss_code=gss_code)
+    if indicator_code:
+        qs = qs.filter(indicator__code=indicator_code)
+    return qs.exists()
+
+
+# Backfill sentinel: Somerset (a 2023 unitary) carries every affected indicator once its
+# sources are re-run (verified: GVA/GDHI/population/per-head/HPI/Nomis/LE all cover it), so
+# a per-indicator check against it tells whether each source's unitary backfill has landed.
+UNITARY_SENTINEL = "E06000066"   # Somerset
+
+
 class Command(BaseCommand):
     help = "Idempotently ensure each dataset is loaded (per-dataset; never overwrites)."
 
@@ -88,6 +104,15 @@ class Command(BaseCommand):
         self._ensure(
             "geography", Place.objects.filter(tier=PlaceTier.LAD).exists(),
             lambda: call_command("seed_v1", geography=True),
+        )
+        # LAD-vintage refresh (data half): version-in the 7 post-2019 unitaries + version-out
+        # the 28 abolished districts (idempotent). Runs BEFORE the ingesters so on a fresh DB
+        # the unitaries' data lands directly; on an already-seeded DB it just creates the
+        # Places and the backfill near the end re-runs the affected sources once.
+        self._ensure(
+            "LAD spine refresh (post-2019 unitaries)",
+            Place.objects.filter(gss_code=UNITARY_SENTINEL, tier=PlaceTier.LAD).exists(),
+            lambda: call_command("refresh_lad_spine"),
         )
         # GVA total (bundled workbooks: 2019 + 2025 editions; one ingest_gva run loads
         # both by auto-detected vintage). Guard on the 2025 edition so a live DB gains it.
@@ -190,6 +215,46 @@ class Command(BaseCommand):
                     "ingest_elections", path=str(p), election_date=d, vintage=v,
                     boundary_valid_from=OLD_WPC_FROM, boundary_valid_to=OLD_WPC_TO),
             )
+
+        # LAD-refresh backfill — on an already-seeded DB the ingesters above skipped (their
+        # data was already present), so the just-versioned-in unitaries have no data yet.
+        # Re-run each affected source ONCE so the previously-dropped unitary rows now land.
+        # Idempotent (update_or_create / ignore_conflicts add only the new unitary rows);
+        # each step is guarded on the Somerset sentinel so it retries per-source on failure
+        # and no-ops on a fresh DB (where the unitaries were populated on the first pass).
+        S = UNITARY_SENTINEL
+        self._ensure(
+            "LAD backfill: GVA", _place_has_obs(S, "gva-balanced-total"),
+            lambda: GVA_DIR.exists() and call_command("ingest_gva", path=str(GVA_DIR)),
+        )
+        self._ensure(
+            "LAD backfill: population", _place_has_obs(S, "population"),
+            lambda: POP_FILE_2025.exists() and call_command(
+                "ingest_population", path=str(POP_FILE_2025), vintage=POP_VINTAGE_2025),
+        )
+        self._ensure(
+            "LAD backfill: GVA per head", _place_has_obs(S, "gva-per-head"),
+            lambda: call_command("derive_per_head"),
+        )
+        self._ensure(
+            "LAD backfill: GDHI", _place_has_obs(S, "gdhi-total"),
+            lambda: GDHI_DIR.exists() and call_command("ingest_gdhi", path=str(GDHI_DIR)),
+        )
+        self._ensure(
+            "LAD backfill: HPI", _place_has_obs(S, "average-house-price"),
+            lambda: call_command("ingest_hpi", edition=HPI_EDITION),
+        )
+        for code in ("claimant-count", "employment-rate-16-64",
+                     "median-weekly-pay", "jobs-density"):
+            self._ensure(
+                f"LAD backfill: Nomis {code}", _place_has_obs(S, code),
+                lambda c=code: call_command("ingest_nomis", only=c),
+            )
+        # ONS LE covers all 7 unitaries AND (via its recode alias) Barnsley/Sheffield.
+        self._ensure(
+            "LAD backfill: ONS life expectancy", _place_has_obs(S, "life-expectancy-birth-male"),
+            lambda: call_command("ingest_le_ons"),
+        )
 
         # Admin user — always ensured when a password is provided, independent of any
         # data guard (idempotent create-or-update).

@@ -63,6 +63,8 @@ core/
                           (Phase 4c deprivation, NI only; rank-based, no score)
     ingest_wimd.py   Welsh WIMD 2019 (bundled ODS) -> LAD: most-deprived-decile share
                           (Phase 4c deprivation, Wales only; published decile, no score)
+    refresh_lad_spine.py  Version-in 7 post-2019 unitaries + version-out 28 abolished
+                          districts (LAD-vintage refresh, data half; map geometry deferred)
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
   tests/           Early guarantees + GVA, population/per-head, HPI and elections verticals
 docs/              Spec + build plan (source of truth)
@@ -413,6 +415,31 @@ a possible later add, NOT built. Endpoints: `/api/compare/` and `/api/compare/pl
 - Peer / "similar places" grouping is DEFERRED (edges toward classification) — a later
   scoping pass, not built here.
 
+LAD-vintage refresh — DATA HALF done (docs/lad_vintage_refresh_scoping_brief.md, Option B
+split into data now / map later). The spine was fixed at Dec-2019 (382), so post-2019
+restructures silently dropped on every ingest. `refresh_lad_spine` (idempotent) fixes the
+DATA:
+- Versions-IN the 7 new unitaries (E06000060 Buckinghamshire 2020-04-01; E06000061/062
+  North/West Northamptonshire 2021-04-01; E06000063/064 Cumberland/Westmorland & Furness,
+  E06000065 North Yorkshire, E06000066 Somerset 2023-04-01) and versions-OUT the 28
+  abolished districts (valid_to = day before successor) — using the SAME valid_from/valid_to
+  versioning as the WPC eras (no model change). The districts' 2,161 historic obs are KEPT
+  (never deleted). Called by seed_v1 (fresh) and bootstrap_seed (existing) so both converge.
+- The 2 pure recodes (Barnsley E08000038, Sheffield E08000039 — ONS-LE-product-only; every
+  other source + standard ONS geography still use the spine codes) are handled by a 2-entry
+  RECODE_ALIASES in ingest_le_ons, so ONS LE lands on the existing Place.
+- bootstrap_seed re-runs the affected ingesters ONCE (GVA/pop/per-head/GDHI/HPI/Nomis/ONS-LE),
+  guarded on the Somerset sentinel, so the unitaries' 2020+ data now LANDS instead of
+  dropping. Verified: each unitary went 0 → ~1,150 obs across 12 indicators.
+- MAP GEOMETRY DEFERRED as its own phase: LAD restructures are PARTIAL and STAGGERED
+  (unlike the WPC all-at-once eras), so a period spans mixed boundary versions and the
+  current one-layer-per-period resolver can't draw it honestly — it needs a per-feature
+  validity model (combined Dec-2019 + new-unitary GeoJSON, draw per (gss,valid_from)).
+  Until then the 7 unitaries render ABSENT on the map (no shape — verified: the client
+  iterates features, so a shapeless place is simply not drawn, no error/mis-colour); they
+  appear fully on list / detail / compare. Sequenced after the quick wins (affordability,
+  age structure).
+
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are
 specified in the spec but deliberately not yet added — they belong to a later
@@ -475,10 +502,13 @@ session per the build order.
   **Scotland-only**, NIMDM **Northern-Ireland-only**, WIMD **Wales-only** (four-nations
   deprivation complete). Check per-indicator coverage (`selectors.PARTIAL_COVERAGE`) before
   assuming a place has a value.
-- Geography-vintage drift: the LAD spine is the **Dec-2019** set (382). Nomis reports
-  ~7 post-2019 unitaries (Cumberland, Westmorland & Furness, North Yorkshire, North/West
-  Northamptonshire, Buckinghamshire, Somerset) that have no matching Place, so their rows
-  are dropped on ingest (logged as "unmatched"). Refreshing the LAD vintage is future work.
+- Geography-vintage drift: the LAD spine started as the **Dec-2019** set (382). The DATA
+  half of the refresh is DONE (`refresh_lad_spine`): the 7 post-2019 unitaries are now
+  versioned-in and the 28 abolished districts versioned-out, so those areas' 2020+ data
+  LANDS (389 LAD Place rows across 4 valid_from eras). The 2 ONS-LE recodes (Barnsley/
+  Sheffield) match via an alias. Still outstanding: the MAP geometry (per-feature validity)
+  — until that phase, the 7 unitaries are absent on the map but present everywhere else.
+  E10 upper-tier counties are a SEPARATE gap (no County/UTLA tier), not this drift.
 - **No upper-tier (County / UTLA) geography yet — and it now costs us data.** The spine
   is LAD + WPC only. Healthy life expectancy at birth (and other OHID indicators) is
   published at County/UTLA, not LAD, so it can't be ingested until an upper-tier tier is

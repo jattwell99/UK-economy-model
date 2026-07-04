@@ -306,6 +306,10 @@ class Command(BaseCommand):
                 )
                 created += int(was_created)
             self.stdout.write(f"{key}: {len(rows)} fetched, {created} new places.")
+        # Apply the post-2019 LAD restructures (version-in unitaries, version-out abolished
+        # districts) so a fresh spine is already current. Idempotent; bootstrap_seed also
+        # calls this on deploy for existing databases.
+        call_command("refresh_lad_spine")
 
     @staticmethod
     def _fetch_arcgis(feature_server, out_fields):
