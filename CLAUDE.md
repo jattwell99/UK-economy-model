@@ -61,6 +61,8 @@ core/
                           (Phase 4c deprivation, Scotland only; rank-based, no score)
     ingest_nimdm.py  NI NIMDM 2017 (bundled CSV) -> LAD: most-deprived-decile share
                           (Phase 4c deprivation, NI only; rank-based, no score)
+    ingest_wimd.py   Welsh WIMD 2019 (bundled ODS) -> LAD: most-deprived-decile share
+                          (Phase 4c deprivation, Wales only; published decile, no score)
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
   tests/           Early guarantees + GVA, population/per-head, HPI and elections verticals
 docs/              Spec + build plan (source of truth)
@@ -303,7 +305,32 @@ Key points:
   `PARTIAL_COVERAGE["nimdm-…-northern-ireland"] = ("Northern Ireland only", {"N"})` so the
   map greys E/W/S, compare drops non-NI selections, and the detail page notes it absent for
   non-NI places. Factual descriptor added. Top: Belfast 27.0%, Derry 25.3%; Lisburn &
-  Castlereagh / Mid Ulster 0%. Wales (WIMD) is the last deprivation session.
+  Castlereagh / Mid Ulster 0%.
+
+Devolved deprivation — Wales WIMD (done, COMPLETES four-nations deprivation): `ingest_wimd`
+reads WIMD 2019 (user-uploaded, BUNDLED as `seed_data/wimd/wimd2019-ranks.ods` — gov.wales
+is WAF-blocked). One metric, `wimd-most-deprived-decile-share-wales` (%, RATE, non-additive):
+share of an LA's LSOAs in Wales's most-deprived decile. Wales-only; never merged / compared
+across nations (seed_v1 + migration 0007). Key points:
+- SCORE metric deliberately NOT built, despite WIMD publishing scores. WG's own guidance:
+  the scores are a construction stage, not a product, and "it is not valid to aggregate the
+  scores to larger geographies by taking an average" (exponential transformation; a 2×
+  score is NOT 2× deprivation). So decile-share only — same discipline as SIMD/NIMDM, and
+  the reason Wales does NOT get England's second (population-weighted score) metric.
+- Decile TAKEN DIRECTLY from WG's published "WIMD 2019 overall decile" column (the
+  Deciles_quintiles_quartiles sheet) — NOT derived from rank, so no rounding question
+  (decile 1 = the most-deprived 191 of 1,909 LSOAs, WG's own assignment). VALIDATED against
+  WG's published figure: Newport, the decile-share leader, reproduces EXACTLY (23/95 = 24.2%).
+- ODS (openpyxl can't read it) parsed with a small STDLIB reader (zipfile + xml.etree) — no
+  new dependency. LSOAs aggregated through to LA; raw deciles NEVER stored. LA is a NAME in
+  the file, matched to the 22 W06 spine Places by name — all 22 match exactly (no alias,
+  unlike SIMD); an unmatched LA FAILS LOUDLY.
+- POINT period at the edition date (2019-11-27), vintage WIMD2019.
+  `PARTIAL_COVERAGE["wimd-…-wales"] = ("Wales only", {"W"})` so the map greys E/S/N, compare
+  drops non-Welsh selections, and the detail page notes it absent for non-Welsh places.
+  Factual descriptor added. Top: Newport 24.2%, Merthyr Tydfil 22.2%; Monmouthshire 0%.
+  **Four-nations deprivation is now complete** (IMD England / SIMD Scotland / NIMDM NI /
+  WIMD Wales) — each its own nation-scoped decile-share, never merged, never cross-compared.
 
 Map — choropleth (docs/map_timeslider_brief.md), COMPLETE (steps 1-7: geometry, endpoint,
 base map, quantile honesty, tier toggle, time slider, click-to-detail):
@@ -450,9 +477,9 @@ session per the build order.
   Ireland** data (NI labour stats come from NISRA, not these Nomis geographies) — GB-only;
   and the deprivation indicators are **single-nation** (each nation has its own index,
   never merged UK-wide, never compared across nations) — IMD **England-only**, SIMD
-  **Scotland-only**, NIMDM **Northern-Ireland-only** (Wales WIMD is the last, next session).
-  Check per-indicator coverage (`selectors.PARTIAL_COVERAGE`) before assuming a place has a
-  value.
+  **Scotland-only**, NIMDM **Northern-Ireland-only**, WIMD **Wales-only** (four-nations
+  deprivation complete). Check per-indicator coverage (`selectors.PARTIAL_COVERAGE`) before
+  assuming a place has a value.
 - Geography-vintage drift: the LAD spine is the **Dec-2019** set (382). Nomis reports
   ~7 post-2019 unitaries (Cumberland, Westmorland & Furness, North Yorkshire, North/West
   Northamptonshire, Buckinghamshire, Somerset) that have no matching Place, so their rows

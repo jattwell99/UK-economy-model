@@ -30,6 +30,7 @@ PARTIAL_COVERAGE = {
     "imd-average-score-england": ("England only", {"E"}),
     "simd-most-deprived-decile-share-scotland": ("Scotland only", {"S"}),
     "nimdm-most-deprived-decile-share-northern-ireland": ("Northern Ireland only", {"N"}),
+    "wimd-most-deprived-decile-share-wales": ("Wales only", {"W"}),
 }
 
 
@@ -50,6 +51,10 @@ INDICATOR_DESCRIPTORS = {
         "Share of the area's neighbourhoods (SOAs) in Northern Ireland's most-deprived 10% — "
         "measures how concentrated the most extreme deprivation is. Ranked within Northern "
         "Ireland only; not comparable with other nations' deprivation indices.",
+    "wimd-most-deprived-decile-share-wales":
+        "Share of the area's neighbourhoods (LSOAs) in Wales's most-deprived 10% — "
+        "measures how concentrated the most extreme deprivation is. Ranked within Wales "
+        "only; not comparable with other nations' deprivation indices.",
 }
 
 
