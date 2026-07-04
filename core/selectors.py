@@ -28,6 +28,7 @@ PARTIAL_COVERAGE = {
     "median-weekly-pay": ("Great Britain only — no Northern Ireland", {"E", "W", "S"}),
     "imd-most-deprived-decile-share-england": ("England only", {"E"}),
     "imd-average-score-england": ("England only", {"E"}),
+    "simd-most-deprived-decile-share-scotland": ("Scotland only", {"S"}),
 }
 
 
@@ -40,6 +41,10 @@ INDICATOR_DESCRIPTORS = {
     "imd-average-score-england":
         "Population-weighted average of the area's neighbourhood deprivation scores — "
         "measures the overall level across the whole area.",
+    "simd-most-deprived-decile-share-scotland":
+        "Share of the area's neighbourhoods (Data Zones) in Scotland's most-deprived 10% — "
+        "measures how concentrated the most extreme deprivation is. Ranked within Scotland "
+        "only; not comparable with other nations' deprivation indices.",
 }
 
 
@@ -221,10 +226,37 @@ def available_years(indicator, tier):
     return [str(d.year) for d in years]
 
 
+# The default slider tick lands on the latest year whose place-coverage is at least
+# this fraction of the indicator's OWN peak per-year coverage — not the latest year that
+# has any data at all. Stops a single-nation straggler period (e.g. an England-only LE
+# point one year ahead of the devolved nations) from being the first thing shown, hiding
+# the broad-coverage picture. 0.85 is coverage-tuned: it sits between life expectancy's
+# whole-nation gap (2023 = 0.76 of peak) and the next-raggedest LEGITIMATE latest period
+# (gva-per-head ~0.92, ordinary geography drift). Revisit if a future indicator's genuine
+# latest period lands in the 0.85-0.92 band — a default that looks "off" is traceable here.
+BROAD_COVERAGE_FRACTION = 0.85
+
+
+def _default_year(qs):
+    """The latest year with 'broad' coverage (>= BROAD_COVERAGE_FRACTION of peak), or None.
+
+    Coverage = distinct PLACES with a value that year (monthly series count once per
+    year, not per month). .order_by() clears the model's Meta ordering so DISTINCT
+    dedupes on (year, place) only — leaving it in would count every monthly row.
+    """
+    pairs = qs.order_by().values_list("period_start__year", "place_id").distinct()
+    counts = Counter(year for year, _place in pairs)
+    if not counts:
+        return None
+    peak = max(counts.values())
+    broad = [year for year, c in counts.items() if c >= BROAD_COVERAGE_FRACTION * peak]
+    return max(broad) if broad else max(counts)   # fall back to latest if none qualify
+
+
 def _resolve_period(qs, period):
     """Narrow a queryset to a single period and return (qs, resolved_label).
 
-    period = 'YYYY-MM' (monthly), 'YYYY' (that year), or None (latest available).
+    period = 'YYYY-MM' (monthly), 'YYYY' (that year), or None (latest BROAD-coverage year).
     """
     if period:
         parts = period.split("-")
@@ -232,10 +264,10 @@ def _resolve_period(qs, period):
         if len(parts) > 1:
             qs = qs.filter(period_start__month=int(parts[1]))
         return qs, period
-    latest = qs.order_by("-period_start").values_list("period_start", flat=True).first()
-    if latest is None:
+    year = _default_year(qs)
+    if year is None:
         return qs.none(), None
-    return qs.filter(period_start__year=latest.year), str(latest.year)
+    return qs.filter(period_start__year=year), str(year)
 
 
 def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):

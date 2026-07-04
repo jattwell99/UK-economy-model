@@ -148,6 +148,13 @@ class Command(BaseCommand):
             "IoD deprivation (England)", _has_obs("imd-average-score-england"),
             lambda: call_command("ingest_imd"),
         )
+        # Deprivation — Scottish SIMD 2020v2 at LAD (fetched live from gov.scot). Rank-based,
+        # so decile-share only (no synthesised score). Scotland-only, never merged UK-wide.
+        self._ensure(
+            "SIMD deprivation (Scotland)",
+            _has_obs("simd-most-deprived-decile-share-scotland"),
+            lambda: call_command("ingest_simd"),
+        )
         # Civic — 2024 general election at the WPC tier (bundled HoC CSV, so the
         # deploy doesn't need parliament.uk egress). New (2023-review) boundaries.
         self._ensure(

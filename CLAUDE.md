@@ -57,6 +57,8 @@ core/
                           beside Fingertips, makes LE UK-wide)
     ingest_imd.py    English IoD 2019 -> LAD: decile-share + pop-weighted score
                           (Phase 4c deprivation, England only, both metrics)
+    ingest_simd.py   Scottish SIMD 2020v2 -> LAD: most-deprived-decile share
+                          (Phase 4c deprivation, Scotland only; rank-based, no score)
     bootstrap_seed.py     Idempotent per-dataset self-seed on deploy (bundled seed_data/)
   tests/           Early guarantees + GVA, population/per-head, HPI and elections verticals
 docs/              Spec + build plan (source of truth)
@@ -213,8 +215,19 @@ England on a separate source. Key points:
   every period ≤ 2022 (W/S/N shade). ONE wrinkle: Fingertips carries a 2023–25 England
   point ONS (ends 2022–24) doesn't, so the slider's DEFAULT latest tick (2023) is
   England-only — slide back one year and all four nations appear. This is the true data
-  state (England has one fresher LE period), surfaced honestly by the slider; the map's
-  default-period logic was left unchanged (a cross-indicator design choice).
+  state (England has one fresher LE period), surfaced honestly by the slider.
+
+Map default period — broad-coverage rule (done): the slider's DEFAULT tick is the latest
+year whose place-coverage is ≥ `BROAD_COVERAGE_FRACTION` (0.85) of the indicator's OWN
+peak per-year coverage, not the latest year with any data (`selectors._default_year`).
+This fixes the LE wrinkle above — LE now defaults to 2022 (all four nations shaded on
+load) instead of the England-only 2023 straggler; the straggler stays a reachable slider
+tick, just not the default. General, not an LE special-case: tested across every mappable
+indicator, only LE's default moves (LE 2023 = 0.76 of peak; the next-raggedest legitimate
+latest period, gva-per-head, is ~0.92, comfortably above 0.85). Coverage counts distinct
+PLACES per year (monthly series once per year); the count clears `order_by()` first so
+DISTINCT doesn't count every monthly row (the Meta-ordering trap). 0.85 is coverage-tuned
+and may need revisiting as more indicators land.
 
 Phase 4c (deprivation — English IoD 2019, done): `ingest_imd` fetches IoD 2019
 "File 7" live from gov.uk (reachable — no upload). One file carries LSOA code, LAD
@@ -238,6 +251,31 @@ IoD2019; the 2025 update loads later as a new vintage + period. Blackpool tops t
 decile) — the divergence proving the two aren't redundant. Explore surface: each IMD
 chart carries a short factual descriptor (concentration vs overall level, no judgment)
 plus the England-only coverage note. This completes the England outcomes work.
+
+Devolved deprivation — Scotland SIMD (done): `ingest_simd` fetches the SIMD 2020v2 ranks
+workbook live from gov.scot (reachable). SIMD is RANK-based with NO published composite
+score, so only ONE metric is built — `simd-most-deprived-decile-share-scotland` (%, RATE,
+non-additive): share of a council's Data Zones in Scotland's most-deprived decile. A score
+would have to be synthesised from domain ranks (editorial invention) — deliberately not
+done. Deprivation is per-nation and NEVER merged UK-wide / never compared across nations;
+this is its own Scotland-scoped code beside the England IoD codes (seed_v1 + migration 0005).
+Key correctness points:
+- Decile is DERIVED from the overall rank (the file has no decile column): most-deprived
+  decile = the ceil(N/10) lowest-ranked Data Zones = rank ≤ 698 of 6,976 (gov.scot's
+  "most deprived 10%", ntile larger-groups-first). VALIDATED against gov.scot's OWN
+  published local-authority figures before shipping: Inverclyde's 20%-most-deprived share
+  reproduces EXACTLY (51/114 = 44.7%) and Glasgow's deciles-1-3 count reproduces EXACTLY
+  (422 zones). The 697-vs-698 boundary affects only ONE council (Fife, by one Data Zone).
+- Data Zones (S01, 6,976) are aggregated through to council; raw Data Zone ranks are NEVER
+  stored. Council is a NAME in the file, matched to the 32 S12 spine Places by name with
+  one alias ("Na h-Eileanan an Iar" [file] → "Na h-Eileanan Siar" [spine, S12000013]);
+  32/32 resolve, and an unmatched council FAILS LOUDLY (don't silently drop a whole council).
+- POINT period at the edition date (2020-01-28), vintage SIMD2020v2; a later edition loads
+  as a new vintage + period. `PARTIAL_COVERAGE["simd-…-scotland"] = ("Scotland only", {"S"})`
+  so the map greys E/W/N, compare drops non-Scottish selections with the reason, and the
+  detail page notes it absent for non-Scottish places. Factual descriptor added (concentration
+  within Scotland only; not cross-nation comparable). Top: Inverclyde 31.6%, Glasgow 30.4%;
+  island councils 0%. NI and Wales deprivation are later sessions.
 
 Map — choropleth (docs/map_timeslider_brief.md), COMPLETE (steps 1-7: geometry, endpoint,
 base map, quantile honesty, tier toggle, time slider, click-to-detail):
@@ -382,9 +420,10 @@ session per the build order.
   at birth (male/female) since the ONS UK LE re-source (`ingest_le_ons`). Still partial:
   `employment-rate-16-64` and `median-weekly-pay` (both Nomis APS/ASHE) have **no Northern
   Ireland** data (NI labour stats come from NISRA, not these Nomis geographies) — GB-only;
-  and the IMD deprivation indicators are **England-only** (each nation has its own index,
-  never merged UK-wide). Check per-indicator coverage (`selectors.PARTIAL_COVERAGE`) before
-  assuming a place has a value.
+  and the deprivation indicators are **single-nation** (each nation has its own index,
+  never merged UK-wide, never compared across nations) — IMD is **England-only**, SIMD is
+  **Scotland-only** (Wales WIMD / NI NIMDM are later sessions). Check per-indicator coverage
+  (`selectors.PARTIAL_COVERAGE`) before assuming a place has a value.
 - Geography-vintage drift: the LAD spine is the **Dec-2019** set (382). Nomis reports
   ~7 post-2019 unitaries (Cumberland, Westmorland & Furness, North Yorkshire, North/West
   Northamptonshire, Buckinghamshire, Somerset) that have no matching Place, so their rows

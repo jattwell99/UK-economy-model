@@ -79,6 +79,9 @@ INDICATORS = [
     # a cardinal population-weighted average score.
     ("imd-most-deprived-decile-share-england", "IMD: share of LSOAs in most-deprived national decile (England)", "community", "%", ValueType.RATE, False, SubjectScope.PLACE),
     ("imd-average-score-england", "IMD: population-weighted average score (England)", "community", "score", ValueType.INDEX, False, SubjectScope.PLACE),
+    # Scotland = SIMD (rank-based, no published score, so decile-share only — never a
+    # synthesised score). Its own nation-scoped code, never merged with England's IoD.
+    ("simd-most-deprived-decile-share-scotland", "SIMD: share of Data Zones in most-deprived national decile (Scotland)", "community", "%", ValueType.RATE, False, SubjectScope.PLACE),
     ("turnout", "Turnout", "civic", "%", ValueType.RATE, False, SubjectScope.PLACE),
     ("winning-party-vote-share", "Winning-party vote share", "civic", "%", ValueType.RATE, False, SubjectScope.PLACE),
     ("majority", "Majority", "civic", "count", ValueType.COUNT, True, SubjectScope.PLACE),
@@ -92,6 +95,7 @@ SOURCES = [
     ("UK House Price Index", "HM Land Registry", "https://landregistry.data.gov.uk", "OGL v3.0"),
     ("OHID Fingertips", "Office for Health Improvement and Disparities", "https://fingertips.phe.org.uk", "OGL v3.0"),
     ("English Indices of Deprivation", "Ministry of Housing, Communities and Local Government", "https://www.gov.uk", "OGL v3.0"),
+    ("Scottish Index of Multiple Deprivation", "Scottish Government", "https://www.gov.scot", "OGL v3.0"),
     ("House of Commons Library — elections", "House of Commons Library", "https://commonslibrary.parliament.uk", "Parliamentary reuse"),
     ("Companies House", "Companies House", "https://developer.company-information.service.gov.uk", "Companies House terms"),
     ("Charity Commission", "Charity Commission for England and Wales", "https://register-of-charities.charitycommission.gov.uk", "Charity Commission terms"),

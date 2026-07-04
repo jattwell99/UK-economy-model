@@ -321,3 +321,44 @@ class ChoroplethApiViewTests(TestCase):
     def test_endpoint_404_for_unknown(self):
         r = self.client.get("/api/choropleth/?indicator=nope&tier=LAD")
         self.assertEqual(r.status_code, 404)
+
+
+class DefaultPeriodBroadCoverageTests(TestCase):
+    """The default slider tick is the latest year with broad coverage, not the latest
+    year that has any data (docs: LE 2023-25 England straggler must not be the default)."""
+
+    def setUp(self):
+        health = make_domain("health", "Health")
+        self.le = make_indicator(health, code="life-expectancy-birth-male",
+                                 is_additive=False, value_type=ValueType.RATIO, unit="years")
+        self.src = make_source("ONS")
+        # 10 places with data in the "broad" year, only 1 in the later straggler year.
+        self.places = [make_place(f"E07{i:06d}", f"P{i}", tier=PlaceTier.LAD) for i in range(10)]
+        for p in self.places:
+            make_observation(self.le, p, self.src, value=Decimal("80"),
+                             period_start=date(2022, 1, 1), period_end=date(2024, 12, 31),
+                             period_type="CALENDAR_YEAR")
+        # One straggler with a later, lonelier period.
+        make_observation(self.le, self.places[0], self.src, value=Decimal("81"),
+                         period_start=date(2023, 1, 1), period_end=date(2025, 12, 31),
+                         period_type="CALENDAR_YEAR")
+
+    def test_default_skips_the_straggler_year(self):
+        d = choropleth_data("life-expectancy-birth-male", tier=PlaceTier.LAD)
+        self.assertEqual(d["period"], "2022")          # broad year, not 2023
+        self.assertEqual(len(d["values"]), 10)         # all ten shaded
+        self.assertIn("2023", d["periods"])            # straggler still a slider tick
+
+    def test_explicit_straggler_period_still_reachable(self):
+        d = choropleth_data("life-expectancy-birth-male", tier=PlaceTier.LAD, period="2023")
+        self.assertEqual(d["period"], "2023")
+        self.assertEqual(len(d["values"]), 1)          # honesty: only the straggler
+
+    def test_full_coverage_defaults_to_latest(self):
+        # If every year is fully covered, the default is simply the latest year.
+        for p in self.places:
+            make_observation(self.le, p, self.src, value=Decimal("82"),
+                             period_start=date(2023, 1, 1), period_end=date(2025, 12, 31),
+                             period_type="CALENDAR_YEAR", vintage="2024-later")
+        d = choropleth_data("life-expectancy-birth-male", tier=PlaceTier.LAD)
+        self.assertEqual(d["period"], "2023")
