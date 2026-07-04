@@ -194,7 +194,8 @@ decile) — the divergence proving the two aren't redundant. Explore surface: ea
 chart carries a short factual descriptor (concentration vs overall level, no judgment)
 plus the England-only coverage note. This completes the England outcomes work.
 
-Map — choropleth (docs/map_timeslider_brief.md), steps 1-3 done (LAD base map):
+Map — choropleth (docs/map_timeslider_brief.md), COMPLETE (steps 1-7: geometry, endpoint,
+base map, quantile honesty, tier toggle, time slider, click-to-detail):
 - Geometry: ONS UGCB (ultra-generalised clipped) Dec-2019 LAD, matching the spine
   vintage; simplified with mapshaper to WGS84, `static/geo/lad.geojson` (~260KB, props
   gss_code+name). GSS join to Place is 382/382 both ways (no drift — geometry and spine
