@@ -200,10 +200,13 @@ Map — choropleth (docs/map_timeslider_brief.md), steps 1-3 done (LAD base map)
   gss_code+name). GSS join to Place is 382/382 both ways (no drift — geometry and spine
   share the Dec-2019 vintage). `STATICFILES_DIRS` added so project-root static/ is served.
 - Endpoint `GET /api/choropleth/?indicator=&tier=LAD&period=` (`selectors.choropleth_data`)
-  returns the brief's §4 shape (values / unit / value_type / is_additive / scale /
-  coverage / no_data). Reuses latest-vintage-per-period (order by place_id, -period_start,
-  -vintage, distinct place_id — NOT the "place" FK, which expands to Place.Meta ordering
-  and breaks DISTINCT ON). period = YYYY / YYYY-MM / latest.
+  returns the brief's §4 shape plus the slider/click extensions: `values` {gss: value},
+  `unit`, `value_type`, `is_additive`, `scale` {min,max}, `breaks` (quantile edges),
+  `coverage` {nations, note}, `no_data` [gss…], `period` (resolved), `periods` (all year
+  ticks), `layer` (lad|wpc-2024|wpc-2010), `boundary` (valid_from iso, for the click URL).
+  Reuses latest-vintage-per-period (order by place_id, -period_start, -vintage, distinct
+  place_id — NOT the "place" FK, which expands to Place.Meta ordering and breaks DISTINCT
+  ON). period = YYYY / YYYY-MM / latest.
 - Honesty baked in from the start (§8): `no_data` = every in-tier place lacking a value
   this period, folding in BOTH nation-absence (England-only over W/S/N, from
   PARTIAL_COVERAGE) AND within-England holes (HPI/LE don't reach every LAD) — the map
