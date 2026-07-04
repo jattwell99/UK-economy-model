@@ -166,6 +166,26 @@ def mappable_indicators(tier=PlaceTier.LAD):
     ]
 
 
+def _quantile_breaks(values, n_classes=6):
+    """Quantile class boundaries for a choropleth: n_classes+1 increasing edges.
+
+    Quantile (equal-count) classing gives spatial contrast that a linear scale loses
+    to extreme outliers (City of London's GVA-per-head). The edges are ACTUAL DATA
+    VALUES, so the legend can label each band with its real range — the colour never
+    hides a magnitude difference. Collapses duplicate edges (skewed / few-value data)
+    so bands stay meaningful, which may yield fewer than n_classes bands.
+    """
+    if not values:
+        return []
+    s = sorted(values)
+    edges = [s[round(k / n_classes * (len(s) - 1))] for k in range(n_classes + 1)]
+    out = [edges[0]]
+    for e in edges[1:]:
+        if e > out[-1]:
+            out.append(e)
+    return out if len(out) > 1 else [s[0], s[-1] if s[-1] > s[0] else s[0] + 1]
+
+
 def _resolve_period(qs, period):
     """Narrow a queryset to a single period and return (qs, resolved_label).
 
@@ -200,8 +220,13 @@ def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):
             f"{indicator_code!r} is an additive total — a choropleth of a total is "
             f"misleading (see §8.2). Use its per-head / rate equivalent.", status=400)
 
-    qs, resolved = _resolve_period(
-        PlaceObservation.objects.filter(indicator=indicator, place__tier=tier), period)
+    # Scope to the CURRENT boundary set (valid_to IS NULL) — LAD (Dec-2019) and the
+    # WPC July-2024 seats. This keeps the 5 Scottish codes shared across boundary eras
+    # from colliding, and matches the geometry layers shipped now. The time slider will
+    # replace this with a per-period date-window resolver when the old WPC layer lands.
+    base = PlaceObservation.objects.filter(
+        indicator=indicator, place__tier=tier, place__valid_to__isnull=True)
+    qs, resolved = _resolve_period(base, period)
 
     # One value per place: newest period_start within the window, then newest vintage.
     # (order by place_id, not the "place" FK, which would expand to Place.Meta.ordering
@@ -211,12 +236,14 @@ def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):
               .distinct("place_id"))
     values = {o.place.gss_code: float(o.value) for o in rows}
 
-    # The map's universe = every place in this tier (matches the geometry layer).
-    universe = set(Place.objects.filter(tier=tier).values_list("gss_code", flat=True))
+    # The map's universe = every current-boundary place in this tier (matches geometry).
+    universe = set(Place.objects.filter(
+        tier=tier, valid_to__isnull=True).values_list("gss_code", flat=True))
     no_data = sorted(universe - set(values))
 
     nums = list(values.values())
     scale = {"min": min(nums), "max": max(nums)} if nums else {"min": None, "max": None}
+    breaks = _quantile_breaks(nums)   # quantile edges (actual data values) for the legend
     cov = PARTIAL_COVERAGE.get(indicator.code)
     coverage = {
         "nations": sorted(cov[1]) if cov else None,   # null = UK-wide
@@ -231,6 +258,7 @@ def choropleth_data(indicator_code, tier=PlaceTier.LAD, period=None):
         "value_type": indicator.value_type,
         "is_additive": indicator.is_additive,
         "scale": scale,
+        "breaks": breaks,   # quantile band edges; band i covers [breaks[i], breaks[i+1])
         "coverage": coverage,
         "no_data": no_data,
     }

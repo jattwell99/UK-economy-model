@@ -31,17 +31,21 @@
     indicator (rates and per-head only — a map of a total would mislead).</p>
 
   <div class="map-controls">
-    <label for="indicator">Indicator</label>
-    <select id="indicator">
-      {% for ind in indicators %}
-        <option value="{{ ind.code }}"{% if ind.code == 'gva-per-head' %} selected{% endif %}>{{ ind.name }}</option>
-      {% endfor %}
+    <label for="tier">Tier</label>
+    <select id="tier">
+      <option value="LAD" selected>Local authority districts</option>
+      <option value="WPC">Constituencies (2024)</option>
     </select>
+    <label for="indicator">Indicator</label>
+    <select id="indicator"></select>
     <span id="period-label" class="map-note"></span>
   </div>
 
   <div id="map"></div>
   <p class="map-note" id="coverage-note"></p>
+
+  {{ indicators_lad|json_script:"inds-lad" }}
+  {{ indicators_wpc|json_script:"inds-wpc" }}
 {% endblock %}
 
 {% block scripts %}
@@ -50,31 +54,61 @@
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script>
   (function () {
-    var GEO_URL = "{% static 'geo/lad.geojson' %}";
     var API = "{% url 'explore:choropleth_api' %}";
+    // Per-tier static geometry (2024 WPC set for now; the 2010 set arrives with the slider).
+    var GEO_URL = {
+      LAD: "{% static 'geo/lad.geojson' %}",
+      WPC: "{% static 'geo/wpc-2024.geojson' %}",
+    };
+    var INDICATORS = {
+      LAD: JSON.parse(document.getElementById("inds-lad").textContent),
+      WPC: JSON.parse(document.getElementById("inds-wpc").textContent),
+    };
     // Neutral sequential palette (ColorBrewer Blues) — NOT diverging good/bad (§9).
     var RAMP = ["#eff3ff", "#c6dbef", "#9ecae1", "#6baed6", "#3182bd", "#08519c"];
     var NO_DATA = "#9e9e9e";   // distinct grey — NEVER the pale light end (§8.1).
 
     var map = L.map("map", { minZoom: 5, maxZoom: 10 }).setView([54.6, -3.2], 6);
-    var geo = null, layer = null, current = null;
+    var geo = null, layer = null, current = null, bandColors = [];
+    var geoCache = {};   // tier -> parsed GeoJSON (fetch each layer once)
+
+    var tierSel = document.getElementById("tier");
     var picker = document.getElementById("indicator");
 
-    function classify(v, scale) {
-      if (scale.min === null || scale.max === scale.min) return RAMP[RAMP.length - 1];
-      var t = (v - scale.min) / (scale.max - scale.min);   // 0..1 linear
-      var i = Math.min(RAMP.length - 1, Math.floor(t * RAMP.length));
-      return RAMP[i];
+    // Sample the ramp across however many quantile bands the data yields (breaks may
+    // collapse when values repeat), so light->dark always spans the full range.
+    function computeBandColors(breaks) {
+      var nbands = Math.max(1, breaks.length - 1);
+      var cols = [];
+      for (var i = 0; i < nbands; i++) {
+        var idx = nbands === 1 ? RAMP.length - 1
+                : Math.round(i * (RAMP.length - 1) / (nbands - 1));
+        cols.push(RAMP[idx]);
+      }
+      return cols;
+    }
+
+    function classify(v) {
+      var b = current.breaks;
+      if (!b || b.length < 2) return RAMP[RAMP.length - 1];
+      for (var i = 0; i < b.length - 1; i++) {
+        if (v < b[i + 1]) return bandColors[i];   // band i = [b[i], b[i+1])
+      }
+      return bandColors[bandColors.length - 1];    // top band includes the max
     }
 
     function styleFor(code) {
       var v = current.values[code];
       var has = v !== undefined;
       return {
-        fillColor: has ? classify(v, current.scale) : NO_DATA,
+        fillColor: has ? classify(v) : NO_DATA,
         fillOpacity: has ? 0.85 : 0.55,
         color: "#ffffff", weight: 0.6,
       };
+    }
+
+    function fmt(n) {
+      return Number(n).toLocaleString(undefined, { maximumFractionDigits: 1 });
     }
 
     function tooltip(feature) {
@@ -103,13 +137,13 @@
     var legend = L.control({ position: "bottomright" });
     legend.onAdd = function () {
       var div = L.DomUtil.create("div", "legend");
-      var s = current.scale, html = "<div class='title'>" + current.unit + "</div>";
-      if (s.min !== null && s.max !== s.min) {
-        for (var i = 0; i < RAMP.length; i++) {
-          var lo = s.min + (s.max - s.min) * (i / RAMP.length);
-          var hi = s.min + (s.max - s.min) * ((i + 1) / RAMP.length);
-          html += "<div class='row'><i style='background:" + RAMP[i] + "'></i>" +
-                  Math.round(lo).toLocaleString() + "–" + Math.round(hi).toLocaleString() + "</div>";
+      var b = current.breaks;
+      var html = "<div class='title'>" + current.unit + " <span style='font-weight:400'>(quantiles)</span></div>";
+      if (b && b.length >= 2) {
+        // Each band labelled with its ACTUAL value range — colour never hides magnitude.
+        for (var i = 0; i < b.length - 1; i++) {
+          html += "<div class='row'><i style='background:" + bandColors[i] + "'></i>" +
+                  fmt(b[i]) + " – " + fmt(b[i + 1]) + "</div>";
         }
       }
       html += "<div class='row nodata'><i></i>no data</div>";
@@ -118,12 +152,15 @@
     };
     var legendAdded = false;
 
+    function tier() { return tierSel.value; }
+
     function load(code) {
-      fetch(API + "?indicator=" + encodeURIComponent(code) + "&tier=LAD")
+      fetch(API + "?indicator=" + encodeURIComponent(code) + "&tier=" + tier())
         .then(function (r) { return r.json(); })
         .then(function (data) {
           if (data.error) { alert(data.error); return; }
           current = data;
+          bandColors = computeBandColors(data.breaks || []);
           document.getElementById("period-label").textContent =
             data.period ? "Period: " + data.period : "";
           document.getElementById("coverage-note").textContent =
@@ -136,11 +173,38 @@
         });
     }
 
-    fetch(GEO_URL).then(function (r) { return r.json(); }).then(function (g) {
-      geo = g;
-      load(picker.value);
-    });
+    // Rebuild the indicator picker for the current tier (civic at WPC, economy/health
+    // etc at LAD — only what actually exists at that tier, non-additive only).
+    function rebuildPicker() {
+      var list = INDICATORS[tier()] || [];
+      picker.innerHTML = "";
+      list.forEach(function (ind) {
+        var o = document.createElement("option");
+        o.value = ind.code; o.textContent = ind.name;
+        picker.appendChild(o);
+      });
+    }
+
+    function loadTier(preferred) {
+      rebuildPicker();
+      if (preferred) {
+        for (var i = 0; i < picker.options.length; i++) {
+          if (picker.options[i].value === preferred) { picker.selectedIndex = i; break; }
+        }
+      }
+      if (!picker.value) return;
+      var t = tier();
+      var apply = function (g) { geo = g; load(picker.value); };
+      if (geoCache[t]) { apply(geoCache[t]); }
+      else {
+        fetch(GEO_URL[t]).then(function (r) { return r.json(); })
+          .then(function (g) { geoCache[t] = g; apply(g); });
+      }
+    }
+
+    tierSel.addEventListener("change", function () { loadTier(); });
     picker.addEventListener("change", function () { load(picker.value); });
+    loadTier("gva-per-head");   // default: LAD, GVA per head
   })();
   </script>
 {% endblock %}

@@ -108,6 +108,76 @@ class ChoroplethAdditiveGuardTests(TestCase):
         self.assertNotIn("gva-balanced-total", codes)
 
 
+class ChoroplethScaleTests(TestCase):
+    """Quantile breaks give contrast + honest per-band value ranges (colour-scale fix)."""
+
+    def setUp(self):
+        econ = make_domain("economy", "Economy")
+        self.ind = make_indicator(econ, code="gva-per-head", is_additive=False,
+                                  value_type=ValueType.RATIO, unit="£")
+        self.src = make_source("ONS")
+        # One extreme outlier (City-of-London-like) + a tight cluster below it.
+        vals = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 5000]
+        for i, v in enumerate(vals):
+            p = make_place("E0700%04d" % i, "LAD%d" % i, tier=PlaceTier.LAD)
+            make_observation(self.ind, p, self.src, value=Decimal(v),
+                             period_start=date(2018, 1, 1), period_end=date(2018, 12, 31))
+
+    def test_breaks_are_quantiles_not_linear(self):
+        d = choropleth_data("gva-per-head", tier=PlaceTier.LAD)
+        b = d["breaks"]
+        self.assertGreaterEqual(len(b), 2)
+        self.assertEqual(b[0], 10.0)          # min
+        self.assertEqual(b[-1], 5000.0)       # max (the outlier is the top edge)
+        # Quantile: the second-highest edge is far below the outlier, so the non-outlier
+        # LADs spread across bands instead of all collapsing into the palest one.
+        self.assertLess(b[-2], 100)
+        # Edges are strictly increasing (deduped) — every band is a real value range.
+        self.assertEqual(sorted(set(b)), b)
+
+
+class ChoroplethTierTests(TestCase):
+    """Tier param swaps place set; picker is per-tier and non-additive only."""
+
+    def setUp(self):
+        econ = make_domain("economy", "Economy")
+        civic = make_domain("civic", "Civic & democratic")
+        self.src = make_source("mixed")
+        # LAD indicator
+        pph = make_indicator(econ, code="gva-per-head", is_additive=False,
+                             value_type=ValueType.RATIO, unit="£")
+        # WPC indicators: turnout (non-additive), majority (additive)
+        turnout = make_indicator(civic, code="turnout", is_additive=False,
+                                 value_type=ValueType.RATE, unit="%")
+        make_indicator(civic, code="majority", is_additive=True,
+                       value_type=ValueType.COUNT, unit="count")
+        lad = make_place("E07000223", "Adur", tier=PlaceTier.LAD)
+        wpc = make_place("E14001305", "Islington North", tier=PlaceTier.WPC,
+                         valid_from=date(2024, 7, 4))
+        make_observation(pph, lad, self.src, value=Decimal("28150"),
+                         period_start=date(2018, 1, 1), period_end=date(2018, 12, 31))
+        make_observation(turnout, wpc, self.src, value=Decimal("67.5"),
+                         period_start=date(2024, 7, 4), period_end=date(2024, 7, 4),
+                         period_type="POINT")
+
+    def test_wpc_tier_returns_constituency_values(self):
+        d = choropleth_data("turnout", tier=PlaceTier.WPC)
+        self.assertIn("E14001305", d["values"])
+        self.assertEqual(d["tier"], PlaceTier.WPC)
+        self.assertNotIn("E07000223", d["values"])   # LAD place absent from WPC map
+
+    def test_picker_is_per_tier(self):
+        lad_codes = [i["code"] for i in mappable_indicators(PlaceTier.LAD)]
+        wpc_codes = [i["code"] for i in mappable_indicators(PlaceTier.WPC)]
+        # Civic lives at WPC, economy at LAD — no cross-tier leakage.
+        self.assertIn("gva-per-head", lad_codes)
+        self.assertNotIn("turnout", lad_codes)
+        self.assertIn("turnout", wpc_codes)
+        self.assertNotIn("gva-per-head", wpc_codes)
+        # Additive majority excluded even though it's a WPC indicator.
+        self.assertNotIn("majority", wpc_codes)
+
+
 class ChoroplethApiViewTests(TestCase):
     def setUp(self):
         econ = make_domain("economy", "Economy")
@@ -123,7 +193,7 @@ class ChoroplethApiViewTests(TestCase):
         r = self.client.get("/api/choropleth/?indicator=gva-per-head&tier=LAD")
         self.assertEqual(r.status_code, 200)
         d = r.json()
-        for key in ("values", "unit", "value_type", "is_additive", "scale", "coverage", "no_data"):
+        for key in ("values", "unit", "value_type", "is_additive", "scale", "breaks", "coverage", "no_data"):
             self.assertIn(key, d)
         self.assertEqual(d["values"]["E07000223"], 28150.0)
 

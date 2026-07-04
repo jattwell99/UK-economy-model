@@ -57,11 +57,14 @@ def place_detail(request, gss_code, valid_from=None):
 
 
 def map_view(request):
-    """Base choropleth map page (Leaflet from CDN + static LAD GeoJSON)."""
+    """Choropleth map page (Leaflet from CDN + static GeoJSON, LAD + WPC tiers)."""
     return render(
         request,
         "explore/map.html",
-        {"indicators": mappable_indicators(PlaceTier.LAD)},
+        {
+            "indicators_lad": mappable_indicators(PlaceTier.LAD),
+            "indicators_wpc": mappable_indicators(PlaceTier.WPC),
+        },
     )
 
 

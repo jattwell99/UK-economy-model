@@ -211,8 +211,21 @@ Map — choropleth (docs/map_timeslider_brief.md), steps 1-3 done (LAD base map)
   refused (400) and excluded from the picker (`mappable_indicators`) — never choropleth a
   total. Neutral sequential palette (Blues), no diverging good/bad.
 - Leaflet from cdnjs (SRI-pinned), no build step. gva-per-head verified: City of London
-  £7.9M/head is the high-outlier tell. Tier toggle, time slider, click-to-detail and the
-  comparison tool are deliberately NOT yet built (later sessions per the brief sequence).
+  £7.9M/head is the high-outlier tell.
+- Colour scale is QUANTILE-classed (`_quantile_breaks`, returned as `breaks` = actual
+  data-value edges), not linear — a linear scale put 368/369 LADs in the palest band
+  (City of London compresses everything); quantile gives ~62 LADs/band. The legend
+  labels each band with its REAL value range, so the top band (`32,864 – 7,937,859`)
+  exposes the outlier's magnitude rather than hiding it. Neutral sequential; no-data grey
+  stays outside the classing.
+- Tier toggle (LAD ↔ WPC, done): WPC-2024 layer `static/geo/wpc-2024.geojson` (UGCB
+  July-2024, 650/650 GSS join). The toggle swaps geometry + the endpoint `tier` param and
+  rebuilds the picker per tier (civic turnout/vote-share at WPC — majority excluded as
+  additive; economy/health/etc at LAD). The endpoint scopes to the CURRENT boundary set
+  (`valid_to IS NULL`) so the 5 codes shared across WPC eras don't collide (S14000021
+  resolves to its 2024 value) — the time slider will swap this for a per-period
+  date-window resolver + the 2010 WPC layer.
+- Time slider, click-to-detail and the comparison tool are NOT yet built (later sessions).
 
 Organisation cluster models (Organisation, OrganisationIdentifier,
 OrganisationSite, OrganisationClassification, OrganisationObservation) are
